@@ -13,21 +13,23 @@ def affineinverse(M) -> np.ndarray:
 def get_affine_matrix_quat(x, y, quaternion) -> np.ndarray:
     theta = R.from_quat(quaternion).as_euler('XYZ')[2]
     return np.array([[np.cos(theta), -np.sin(theta), x],
-                    [np.sin(theta), np.cos(theta), y],
-                    [0, 0, 1]])
+                     [np.sin(theta), np.cos(theta), y],
+                     [0, 0, 1]])
 
 
-def get_bev_lidar_img_stack(odom: dict, path_to_bev_lidar: str, t_idx: int, verbose=False) -> np.ndarray:
+def get_bev_lidar_img_stack(odom: dict, path_to_bev_lidar: str, i: int, verbose=False):
     bev_img_stack = [np.array(Image.open(os.path.join(
-        path_to_bev_lidar, f'{x}.png'))) for x in range(t_idx - 20 + 1, t_idx + 1)]
-    if verbose:
-        img_file_names = [f'{x}.png' for x in range(t_idx - 20 + 1, t_idx + 1)]
-        img_file_names = [img_file_names[i]
-                          for i in [0, 5, 10, 15, 19]]
-    bev_img_stack_odoms = odom[t_idx - 20 + 1: t_idx + 1]
+        path_to_bev_lidar, f'{x}.png'))) for x in range(i - 20 + 1, i + 1)]
+    bev_img_stack_odoms = odom[i - 20 + 1: i + 1]
     bev_img_stack = [bev_img_stack[i] for i in [0, 5, 10, 15, 19]]
     bev_img_stack_odoms = [bev_img_stack_odoms[i]
                            for i in [0, 5, 10, 15, 19]]
+
+    # for visualization purposes
+    if verbose:
+        img_file_names = [f'{x}.png' for x in range(i - 20 + 1, i + 1)]
+        img_file_names = [img_file_names[i]
+                          for i in [0, 5, 10, 15, 19]]
 
     # rotate previous frames to current frame
     last_frame = bev_img_stack_odoms[-1]
