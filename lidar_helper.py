@@ -1,8 +1,11 @@
 import os
-import numpy as np
+from typing import Tuple
+
 import cv2
-from scipy.spatial.transform import Rotation as R
+import matplotlib.pyplot as plt
+import numpy as np
 from PIL import Image
+from scipy.spatial.transform import Rotation as R
 
 
 def affineinverse(M) -> np.ndarray:
@@ -17,7 +20,7 @@ def get_affine_matrix_quat(x, y, quaternion) -> np.ndarray:
                      [0, 0, 1]])
 
 
-def get_stack(odom: dict, lidar_path: str, i: int):
+def get_stack(odom: dict, lidar_path: str, i: int) -> Tuple[np.ndarray, list]:
     lidar_stack = [np.array(Image.open(os.path.join(
         lidar_path, f'{x}.png'))) for x in range(i - 20 + 1, i + 1)]
     odom_stack = odom[i - 20 + 1: i + 1]
@@ -68,3 +71,13 @@ def get_stack(odom: dict, lidar_path: str, i: int):
     lidar_stack = np.asarray(lidar_stack).astype(np.float32)
     lidar_stack = lidar_stack / 255.0  # normalize the image
     return lidar_stack, img_file_names
+
+
+def visualize_lidar_stack(lidar_stack: np.ndarray, file_names: np.ndarray):
+    rows, cols = 1, 5
+    plt.figure(figsize=(20, 20 * rows // cols))
+    for i, (img, title) in enumerate(zip(lidar_stack, file_names)):
+        ax = plt.subplot(rows, cols, i + 1)
+        plt.title(f'{title}, index: {i}')
+        plt.imshow(img, cmap='gray')
+    plt.show()

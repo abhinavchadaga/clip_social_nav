@@ -1,20 +1,16 @@
-from torchvision import transforms
-from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
+import glob
 import os
 import pickle
 from typing import Optional, Tuple
-from matplotlib import cm
-import matplotlib
-from termcolor import cprint
-import torch
-import pytorch_lightning as pl
-from tqdm import tqdm
-from lidar_helper import get_stack
+
 import numpy as np
-import glob
-import psutil
-import matplotlib.pyplot as plt
+import pytorch_lightning as pl
 from PIL import ImageShow, Image
+from termcolor import cprint
+from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
+from tqdm import tqdm
+
+from lidar_helper import get_stack
 
 
 class CLIPSet(Dataset):
@@ -72,60 +68,83 @@ class CLIPSet(Dataset):
 
 
 class CLIPDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir: str, batch_size=int, num_workers=0, delay=30) -> None:
-        super().__init__()
-        # check that data directory is valid
+    def __init__(self, data_dir: str, batch_size=int, num_workers=int, delay=30, visualize=False) \
+            -> None:
+        """Configure Data Module
+
+        args:
+            data_dir: path to all the processed pickle files that will make up the dataset
+            batch_size: number of lidar stacks and future_joystick samples to pull from
+                the dataloader for one training step
+            num_workers: threads to use for dataloaders
+
+        """
+        super(CLIPDataModule, self).__init__()
+        self.dataset = None
+        self.validation_set = None
+        self.training_set = None
+        self.visualize = visualize
         if data_dir is None or not os.path.exists(data_dir):
             raise ValueError("Make sure to pass in a valid data directory")
 
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.delay = delay
-        self.transforms = transforms.Compose([
-            transforms.ToTensor()
-        ])
 
         # load the pickle files
         self.pickle_file_paths = glob.glob(
             os.path.join(data_dir, '*_final.pkl'))
 
-        datasets = []
-        for pfp in tqdm(self.pickle_file_paths):
-            print('path to pickle file: ', pfp)
-            tmp_dataset = CLIPSet(pickle_file_path=pfp, delay=self.delay)
-            datasets.append(tmp_dataset)
+    def setup(self, stage: Optional[str] = None) -> None:
+        """Setup training and validation splits
 
-        clipset_full = ConcatDataset(datasets=datasets)
-        train_size = int(0.75 * len(clipset_full))
-        val_size = len(clipset_full) - train_size
-        self.clipset_train, self.clipset_val = random_split(
-            clipset_full, [train_size, val_size])
+        args:
+            stage: one of either ['fit', 'validate', 'test', 'predict']
 
-    # def setup(self, stage: Optional[str] = None) -> None:
-    #     if stage in (None, 'fit'):
-    #         datasets = []
-    #         for pfp in tqdm(self.pickle_file_paths):
-    #             tmp_dataset = CLIPSet(pickle_file_path=pfp, delay=self.delay)
-    #             datasets.append(tmp_dataset)
+        """
+        if stage in (None, 'fit'):
+            datasets = []
+            for pfp in tqdm(self.pickle_file_paths):
+                tmp_dataset = CLIPSet(pickle_file_path=pfp, delay=self.delay,
+                                      visualize=self.visualize)
+                datasets.append(tmp_dataset)
 
-    #         clipset_full = ConcatDataset(datasets=datasets)
-    #         self.clipset_train, self.clipset_val = random_split(
-    #             clipset_full, [0.7 * len(clipset_full), 1 - (0.7 * len(clipset_full))])
+            # create full dataset by concatenating datasets
+            # generated from every pickle file and lidar dir
+            self.dataset = ConcatDataset(datasets=datasets)
+            # setup 75-25 training-validation split
+            train_size = int(0.75 * len(self.dataset))
+            val_size = len(self.dataset) - train_size
+
+            # randomly split into training and validation set
+            self.training_set, self.validation_set = random_split(
+                dataset=self.dataset, lengths=[train_size, val_size])
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(self.clipset_train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, drop_last=True)
+        # return a pytorch dataloader object
+        # with training data
+        return DataLoader(self.training_set, batch_size=self.batch_size, shuffle=True,
+                          num_workers=self.num_workers, drop_last=True)
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(self.clipset_val, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, drop_last=True)
+        # return a pytorch dataloader object
+        # with validation data
+        return DataLoader(self.validation_set, batch_size=self.batch_size, shuffle=False,
+                          num_workers=self.num_workers, drop_last=True)
 
 
 def main():
-    dm = CLIPDataModule(data_dir='./data', batch_size=1)
+    dm = CLIPDataModule(
+        data_dir='./data',
+        batch_size=1,
+        num_workers=0
+    )
 
-    train_dataloader = dm.train_dataloader()
-    lidar_stack, joystick = next(iter(train_dataloader))
-    print(lidar_stack.shape)
-    img = Image.fromarray(lidar_stack.numpy().squeeze()[0] * 255)
+    dm.setup()
+    trainloader = dm.train_dataloader()
+    lidar_stack, future_joy = next(iter(trainloader))
+    lidar_stack = lidar_stack.numpy().squeeze()
+    img = Image.fromarray(lidar_stack[-1])
     ImageShow.show(img)
 
 
