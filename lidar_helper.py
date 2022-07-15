@@ -23,7 +23,7 @@ def get_stack(odom: dict, lidar_path: str, i: int):
     odom_stack = odom[i - 20 + 1: i + 1]
     lidar_stack = [lidar_stack[i] for i in [0, 5, 10, 15, 19]]
     odom_stack = [odom_stack[i]
-                           for i in [0, 5, 10, 15, 19]]
+                  for i in [0, 5, 10, 15, 19]]
 
     # for visualization purposes
     img_file_names = [f'{x}.png' for x in range(i - 20 + 1, i + 1)]

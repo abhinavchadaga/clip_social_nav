@@ -54,8 +54,8 @@ class CLIPSet(Dataset):
         index = self.delay + index
 
         lidar_stack = get_stack(odom=self.data['odom'],
-                                        lidar_path=self.lidar_dir,
-                                        i=index)
+                                lidar_path=self.lidar_dir,
+                                i=index)
 
         if not self.visualize:
             lidar_stack = lidar_stack[0]
