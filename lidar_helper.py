@@ -8,6 +8,9 @@ from PIL import Image
 from scipy.spatial.transform import Rotation as R
 
 
+STACK_LEN = 20
+
+
 def affineinverse(M) -> np.ndarray:
     tmp = np.hstack((M[:2, :2].T, -M[:2, :2].T @ M[:2, 2].reshape((2, 1))))
     return np.vstack((tmp, np.array([0, 0, 1])))
@@ -22,14 +25,14 @@ def get_affine_matrix_quat(x, y, quaternion) -> np.ndarray:
 
 def get_stack(odom: dict, lidar_path: str, i: int) -> Tuple[np.ndarray, list]:
     lidar_stack = [np.array(Image.open(os.path.join(
-        lidar_path, f'{x}.png'))) for x in range(i - 20 + 1, i + 1)]
-    odom_stack = odom[i - 20 + 1: i + 1]
+        lidar_path, f'{x}.png'))) for x in range(i - STACK_LEN + 1, i + 1)]
+    odom_stack = odom[i - STACK_LEN + 1: i + 1]
     lidar_stack = [lidar_stack[i] for i in [0, 5, 10, 15, 19]]
     odom_stack = [odom_stack[i]
                   for i in [0, 5, 10, 15, 19]]
 
     # for visualization purposes
-    img_file_names = [f'{x}.png' for x in range(i - 20 + 1, i + 1)]
+    img_file_names = [x for x in range(i - STACK_LEN + 1, i + 1)]
     img_file_names = [img_file_names[i]
                       for i in [0, 5, 10, 15, 19]]
 
@@ -70,14 +73,16 @@ def get_stack(odom: dict, lidar_path: str, i: int) -> Tuple[np.ndarray, list]:
     # combine the 5 single-channel images into a single image of 5 channels
     lidar_stack = np.asarray(lidar_stack).astype(np.float32)
     lidar_stack = lidar_stack / 255.0  # normalize the image
+    img_file_names = np.array(img_file_names)
     return lidar_stack, img_file_names
 
 
 def visualize_lidar_stack(lidar_stack: np.ndarray, file_names: np.ndarray):
-    rows, cols = 1, 5
+    file_names = [f'{n}.png' for n in file_names]
+    rows, cols = 2, 3
     plt.figure(figsize=(20, 20 * rows // cols))
     for i, (img, title) in enumerate(zip(lidar_stack, file_names)):
-        ax = plt.subplot(rows, cols, i + 1)
+        plt.subplot(rows, cols, i + 1)
         plt.title(f'{title}, index: {i}')
         plt.imshow(img, cmap='gray')
     plt.show()

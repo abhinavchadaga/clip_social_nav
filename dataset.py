@@ -50,7 +50,7 @@ class CLIPSet(Dataset):
                'yellow', attrs=['bold'])
 
     def __len__(self) -> int:
-        return len(self.lidar_img_paths)
+        return len(self.lidar_img_paths) - self.delay
 
     def __getitem__(self, index: int) -> Tuple[np.ndarray, np.ndarray]:
         # offset index
@@ -64,6 +64,9 @@ class CLIPSet(Dataset):
             lidar_stack = lidar_stack[0]
 
         future_joy_data = self.data['future_joystick'][index]
+        # TODO: look at way to force same dimension in samples
+        # right now limiting to 300 frames / 5 seconds
+        future_joy_data = future_joy_data[:300, :]
         return lidar_stack, future_joy_data
 
 
@@ -131,22 +134,3 @@ class CLIPDataModule(pl.LightningDataModule):
         # with validation data
         return DataLoader(self.validation_set, batch_size=self.batch_size, shuffle=False,
                           num_workers=self.num_workers, drop_last=True)
-
-
-def main():
-    dm = CLIPDataModule(
-        data_dir='./data',
-        batch_size=1,
-        num_workers=0
-    )
-
-    dm.setup()
-    trainloader = dm.train_dataloader()
-    lidar_stack, future_joy = next(iter(trainloader))
-    lidar_stack = lidar_stack.numpy().squeeze()
-    img = Image.fromarray(lidar_stack[-1])
-    ImageShow.show(img)
-
-
-if __name__ == "__main__":
-    main()
