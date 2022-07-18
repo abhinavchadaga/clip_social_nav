@@ -37,7 +37,7 @@ def get_stack(odom: list, lidar_img_dir: str, i: int) -> Tuple[np.ndarray, np.nd
     lidar_stack = []
     for x in range(i - STACK_LEN + 1, i + 1):
         img = Image.open(os.path.join(lidar_img_dir, f'{x}.png'))
-        img = np.array(img)
+        img = np.asarray(img)
         lidar_stack.append(img)
 
     odom_stack = odom[i - STACK_LEN + 1: i + 1]
