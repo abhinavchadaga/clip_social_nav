@@ -7,7 +7,9 @@ import numpy as np
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
 
-
+# 10hz * 2 seconds = 20 frames
+# used to get the previous two seconds
+# of BEV Lidar data
 STACK_LEN = 20
 
 
@@ -23,9 +25,21 @@ def get_affine_matrix_quat(x, y, quaternion) -> np.ndarray:
                      [0, 0, 1]])
 
 
-def get_stack(odom: dict, lidar_path: str, i: int) -> Tuple[np.ndarray, list]:
-    lidar_stack = [np.array(Image.open(os.path.join(
-        lidar_path, f'{x}.png'))) for x in range(i - STACK_LEN + 1, i + 1)]
+def get_stack(odom: list, lidar_img_dir: str, i: int) -> Tuple[np.ndarray, np.ndarray]:
+    """ Get a stack of 5 lidar images given index time = t
+
+    :param odom: list of odometry values from the robot
+    :param lidar_img_dir: path to the lidar image data
+    :param i: index to get data from; corresponds to the file names of the lidar image data
+    :return: a stack of lidar images, five channels, with current time t at index 4, and time t -
+    2 at index 0
+    """
+    lidar_stack = []
+    for x in range(i - STACK_LEN + 1, i + 1):
+        img = Image.open(os.path.join(lidar_img_dir, f'{x}.png'))
+        img = np.array(img)
+        lidar_stack.append(img)
+
     odom_stack = odom[i - STACK_LEN + 1: i + 1]
     lidar_stack = [lidar_stack[i] for i in [0, 5, 10, 15, 19]]
     odom_stack = [odom_stack[i]
@@ -38,37 +52,37 @@ def get_stack(odom: dict, lidar_path: str, i: int) -> Tuple[np.ndarray, list]:
 
     # rotate previous frames to current frame
     last_frame = odom_stack[-1]
-    T_odom_5 = get_affine_matrix_quat(
+    t_odom_5 = get_affine_matrix_quat(
         last_frame[0], last_frame[1], last_frame[2])
-    T_odom_4 = get_affine_matrix_quat(odom_stack[-2][0],
+    t_odom_4 = get_affine_matrix_quat(odom_stack[-2][0],
                                       odom_stack[-2][1],
                                       odom_stack[-2][2])
-    T_4_5 = affineinverse(T_odom_4) @ T_odom_5
-    T_odom_3 = get_affine_matrix_quat(odom_stack[-3][0],
+    t_4_5 = affineinverse(t_odom_4) @ t_odom_5
+    t_odom_3 = get_affine_matrix_quat(odom_stack[-3][0],
                                       odom_stack[-3][1],
                                       odom_stack[-3][2])
-    T_3_5 = affineinverse(T_odom_3) @ T_odom_5
-    T_odom_2 = get_affine_matrix_quat(odom_stack[-4][0],
+    t_3_5 = affineinverse(t_odom_3) @ t_odom_5
+    t_odom_2 = get_affine_matrix_quat(odom_stack[-4][0],
                                       odom_stack[-4][1],
                                       odom_stack[-4][2])
-    T_2_5 = affineinverse(T_odom_2) @ T_odom_5
-    T_odom_1 = get_affine_matrix_quat(odom_stack[-5][0],
+    t_2_5 = affineinverse(t_odom_2) @ t_odom_5
+    t_odom_1 = get_affine_matrix_quat(odom_stack[-5][0],
                                       odom_stack[-5][1],
                                       odom_stack[-5][2])
-    T_1_5 = affineinverse(T_odom_1) @ T_odom_5
+    t_1_5 = affineinverse(t_odom_1) @ t_odom_5
     # now do the rotations
-    T_1_5[:, -1] *= -20
-    T_2_5[:, -1] *= -20
-    T_3_5[:, -1] *= -20
-    T_4_5[:, -1] *= -20
+    t_1_5[:, -1] *= -20
+    t_2_5[:, -1] *= -20
+    t_3_5[:, -1] *= -20
+    t_4_5[:, -1] *= -20
     lidar_stack[0] = cv2.warpAffine(
-        lidar_stack[0], T_1_5[:2, :], (401, 401))
+        lidar_stack[0], t_1_5[:2, :], (401, 401))
     lidar_stack[1] = cv2.warpAffine(
-        lidar_stack[1], T_2_5[:2, :], (401, 401))
+        lidar_stack[1], t_2_5[:2, :], (401, 401))
     lidar_stack[2] = cv2.warpAffine(
-        lidar_stack[2], T_3_5[:2, :], (401, 401))
+        lidar_stack[2], t_3_5[:2, :], (401, 401))
     lidar_stack[3] = cv2.warpAffine(
-        lidar_stack[3], T_4_5[:2, :], (401, 401))
+        lidar_stack[3], t_4_5[:2, :], (401, 401))
 
     # combine the 5 single-channel images into a single image of 5 channels
     lidar_stack = np.asarray(lidar_stack).astype(np.float32)
@@ -77,7 +91,13 @@ def get_stack(odom: dict, lidar_path: str, i: int) -> Tuple[np.ndarray, list]:
     return lidar_stack, img_file_names
 
 
-def visualize_lidar_stack(lidar_stack: np.ndarray, file_names: np.ndarray):
+def visualize_lidar_stack(lidar_stack: np.ndarray, file_names: np.ndarray) -> None:
+    """
+
+    :param lidar_stack:
+    :param file_names:
+    :return:
+    """
     file_names = [f'{n}.png' for n in file_names]
     rows, cols = 2, 3
     plt.figure(figsize=(20, 20 * rows // cols))

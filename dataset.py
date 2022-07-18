@@ -5,7 +5,6 @@ from typing import Optional, Tuple
 
 import numpy as np
 import pytorch_lightning as pl
-from PIL import ImageShow, Image
 from termcolor import cprint
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
 from tqdm import tqdm
@@ -57,7 +56,7 @@ class CLIPSet(Dataset):
         index = self.delay + index
 
         lidar_stack = get_stack(odom=self.data['odom'],
-                                lidar_path=self.lidar_dir,
+                                lidar_img_dir=self.lidar_dir,
                                 i=index)
 
         if not self.visualize:
