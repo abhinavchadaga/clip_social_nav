@@ -99,8 +99,8 @@ def visualize_lidar_stack(lidar_stack: np.ndarray, file_names: np.ndarray) -> No
     :return:
     """
     file_names = [f'{n}.png' for n in file_names]
-    rows, cols = 2, 3
-    plt.figure(figsize=(20, 20 * rows // cols))
+    rows, cols = 1, 5
+    plt.figure(figsize=(25, 25))
     for i, (img, title) in enumerate(zip(lidar_stack, file_names)):
         plt.subplot(rows, cols, i + 1)
         plt.title(f'{title}, index: {i}')

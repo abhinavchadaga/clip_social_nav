@@ -3,3 +3,4 @@ data/
 data_bak/
 .ipynb_checkpoints/
 .DS_Store
+.idea/
