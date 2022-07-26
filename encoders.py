@@ -1,6 +1,7 @@
 import time
 
 import torch
+from termcolor import cprint
 from torch import nn, Tensor
 
 
@@ -8,7 +9,8 @@ class PatchEmbedding(nn.Module):
     """ Convert a 2D image into 1D patches and embed them
     """
 
-    def __init__(self, img_size: int, input_channels: int, patch_size=16, embedding_size=768):
+    def __init__(self, img_size: int, input_channels: int, patch_size=16, embedding_size=768) -> \
+            None:
         """ Initialize a PatchEmbedding Layer
 
         :param img_size: size of the input images (assume square)
@@ -50,11 +52,21 @@ class PatchEmbedding(nn.Module):
 
 
 class LidarEncoder(nn.Module):
-    def __init__(self, image_size: int, input_channels: int, output_dim: int, device: str,
-                 patch_size=16, embedding_size=768, ):
+    """ Vision Transformer used to generate lidar feature vector
+    """
+
+    def __init__(self, img_size: int, input_channels: int, patch_size=16, embedding_size=768,
+                 output_size=100) -> None:
+        """ Create a LidarEncoder
+
+        :param img_size: size of the input images (assume square)
+        :param input_channels: number of input channels (1 for grayscale, 3 for RGB)
+        :param patch_size: size of a 2D patch (assume square)
+        :param embedding_size: size of the embedding for a patch (input to the transformer)
+        :param output_size: size of the output feature
+        """
         super(LidarEncoder, self).__init__()
-        super(LidarEncoder, self).__init__()
-        self.patch_embed = PatchEmbedding(img_size=image_size, input_channels=input_channels,
+        self.patch_embed = PatchEmbedding(img_size=img_size, input_channels=input_channels,
                                           patch_size=patch_size, embedding_size=embedding_size)
 
         # class token from BERT
@@ -68,33 +80,70 @@ class LidarEncoder(nn.Module):
         # transformer encoder
         self.encoder = nn.TransformerEncoder(
             encoder_layer=nn.TransformerEncoderLayer(d_model=embedding_size, nhead=8,
-                                                     activation='gelu', batch_first=True,
-                                                     device=device),
+                                                     activation='gelu', batch_first=True),
             num_layers=6)
 
         # MLP head, only uses the cls token
-        self.mlp_head = nn.Linear(embedding_size, output_dim)
+        self.mlp_head = nn.Linear(embedding_size, output_size)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: Tensor) -> Tensor:
+        """ pass batch of images and return a feature vector
+
+        :param x: input tensor (batch_size, num_channels, img_size, img_size)
+        :return: lidar feature tensor (batch_size, output_size)
+        """
         batch_size = x.shape[0]
-        x = self.patch_embed(x)
-        cls_token = self.cls_token.expand(batch_size, -1, -1)
-        x = torch.cat((cls_token, x), dim=1)
-        x += self.positional_embeddings
-        x = self.encoder(x)
-        cls_token = x[:, 0]
-        x = self.mlp_head(cls_token)
+        x = self.patch_embed(x)  # turn batch of images into embeddings
+        cls_token = self.cls_token.expand(batch_size, -1, -1)  # expand cls token from 1 batch
+        x = torch.cat((cls_token, x),
+                      dim=1)  # concatenate cls token to beginning of patch embeddings
+        x += self.positional_embeddings  # add learnable positional embeddings
+        x = self.encoder(x)  # pass input with cls token and positional
+        # embeddings through transformer encoder
+        cls_token = x[:, 0]  # keep only cls token, discard rest
+        x = self.mlp_head(cls_token)  # pass cls token into MLP head
+        return x
+
+
+class JoyStickEncoder(nn.Module):
+    """ MLP used to generate feature vectors for joystick input
+    """
+
+    def __init__(self, input_dim: int, output_dim=100) -> None:
+        super(JoyStickEncoder, self).__init__()
+        self.fc1 = nn.Linear(input_dim, input_dim // 2)
+        self.fc2 = nn.Linear(input_dim // 2, output_dim)
+
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(p=0.2)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x.flatten(1)
+        x = self.fc1(x)
+        x = self.dropout(x)
+        x = self.relu(x)
+
+        x = self.fc2(x)
+        x = self.dropout(x)
+        x = self.relu(x)
+
         return x
 
 
 def main():
     start = time.time()
-    device = 'mps'
-    x = torch.rand((64, 5, 401, 401)).to(device)
-    lidar_encoder = LidarEncoder(x.shape[2], x.shape[1], output_dim=100, device=device)
+    x = torch.rand((64, 5, 401, 401))
+    lidar_encoder = LidarEncoder(x.shape[2], x.shape[1], output_size=100)
     out = lidar_encoder(x)
     print(out.shape)
-    print(f'elapsed time: {time.time() - start:.2f}')
+    cprint(f'elapsed time: {time.time() - start:.2f} s', 'green', attrs=['bold'])
+
+    start = time.time()
+    y = torch.rand((64, 300, 3))
+    joystick_encoder = JoyStickEncoder(input_dim=y.shape[1] * y.shape[2], output_dim=100)
+    joy_out = joystick_encoder(y)
+    print(joy_out.shape)
+    cprint(f'elapsed time: {time.time() - start:.2f} s', 'green', attrs=['bold'])
 
 
 if __name__ == '__main__':
