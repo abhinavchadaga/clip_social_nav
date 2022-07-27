@@ -4,6 +4,8 @@ import torch
 from termcolor import cprint
 from torch import nn, Tensor
 
+from dataset import CLIPDataModule
+
 
 class PatchEmbedding(nn.Module):
     """ Convert a 2D image into 1D patches and embed them
@@ -23,7 +25,6 @@ class PatchEmbedding(nn.Module):
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = (self.img_size // self.patch_size) ** 2
-        print(self.num_patches)
 
         # linearly transform patches
         self.lin_proj = nn.Linear(in_features=(self.patch_size ** 2) * self.input_channels,
@@ -78,10 +79,11 @@ class LidarEncoder(nn.Module):
             torch.zeros(1, 1 + self.patch_embed.num_patches, embedding_size))
 
         # transformer encoder
-        self.encoder = nn.TransformerEncoder(
-            encoder_layer=nn.TransformerEncoderLayer(d_model=embedding_size, nhead=8,
-                                                     activation='gelu', batch_first=True),
-            num_layers=6)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_size, nhead=8,
+                                                   activation='gelu', batch_first=True)
+        self.layer_norm = nn.LayerNorm(embedding_size, eps=1e-6)
+        self.encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=6,
+                                             norm=self.layer_norm)
 
         # MLP head, only uses the cls token
         self.mlp_head = nn.Linear(embedding_size, output_size)
@@ -109,39 +111,70 @@ class JoyStickEncoder(nn.Module):
     """ MLP used to generate feature vectors for joystick input
     """
 
-    def __init__(self, input_dim: int, output_dim=100) -> None:
+    def __init__(self, input_dim: int, output_dim=100, dropout=0.2) -> None:
         super(JoyStickEncoder, self).__init__()
-        self.fc1 = nn.Linear(input_dim, input_dim // 2)
-        self.fc2 = nn.Linear(input_dim // 2, output_dim)
+        # two linear transformations
+        self.fc1 = nn.Linear(input_dim, input_dim)
+        self.fc2 = nn.Linear(input_dim, output_dim)
 
+        # activation, dropout, batch normalize
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=0.2)
+        self.dropout = nn.Dropout(p=dropout)
+        self.batch_norm = nn.BatchNorm1d(input_dim)
 
     def forward(self, x: Tensor) -> Tensor:
         x = x.flatten(1)
+
+        # Input to hidden layer
+        x = self.batch_norm(x)
         x = self.fc1(x)
         x = self.dropout(x)
         x = self.relu(x)
 
+        # hidden layer to output
+        x = self.batch_norm(x)
         x = self.fc2(x)
         x = self.dropout(x)
         x = self.relu(x)
-
         return x
 
 
 def main():
+    # load data
+    data_path = './data'
+    cprint(f'loading data from {data_path}...', 'green')
+    dm = CLIPDataModule(data_dir='./data', batch_size=128, num_workers=2)
+    dm.setup()
+
+    cprint('creating trainloader...', 'green')
+    # get a random batch from training set
+    trainloader = dm.train_dataloader()
+    train_iter = iter(trainloader)
+    batch = next(train_iter)
+    cprint('done creating trainloader\n', 'green')
+
+    output_size = 100
+    cprint(f'output_size: {output_size}', 'cyan', attrs=['bold'])
+
+    # pass lidar data through encoder
     start = time.time()
-    x = torch.rand((64, 5, 401, 401))
-    lidar_encoder = LidarEncoder(x.shape[2], x.shape[1], output_size=100)
-    out = lidar_encoder(x)
+    lidar_batch = batch[0]
+    cprint(f'lidar_batch shape: {lidar_batch.shape}', 'green')
+    img_size = lidar_batch.shape[2]
+    input_channels = lidar_batch.shape[1]
+    lidar_encoder = LidarEncoder(img_size=img_size, input_channels=input_channels,
+                                 output_size=output_size, patch_size=32)
+    out = lidar_encoder(lidar_batch)
     print(out.shape)
     cprint(f'elapsed time: {time.time() - start:.2f} s', 'green', attrs=['bold'])
 
+    # pass joystick data through encoder
     start = time.time()
-    y = torch.rand((64, 300, 3))
-    joystick_encoder = JoyStickEncoder(input_dim=y.shape[1] * y.shape[2], output_dim=100)
-    joy_out = joystick_encoder(y)
+    joy_batch = batch[1]
+    cprint(f'joy_batch shape: {joy_batch.shape}', 'green')
+    input_dim = joy_batch.shape[1] * joy_batch.shape[2]
+    joystick_encoder = JoyStickEncoder(input_dim=input_dim, output_dim=output_size)
+    joy_out = joystick_encoder(joy_batch)
     print(joy_out.shape)
     cprint(f'elapsed time: {time.time() - start:.2f} s', 'green', attrs=['bold'])
 

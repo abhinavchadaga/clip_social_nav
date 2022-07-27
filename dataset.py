@@ -66,7 +66,8 @@ class CLIPSet(Dataset):
         if not self.include_lidar_file_names:
             lidar_stack = lidar_stack[0]
 
-        future_joy_data = self.data['future_joystick'][index]
+        # TODO: remove astype, put this in the parallel pickle file processor
+        future_joy_data = self.data['future_joystick'][index].astype(np.float32)
         future_joy_data = future_joy_data[:self.joy_pred_len, :]
         return lidar_stack, future_joy_data
 
@@ -138,10 +139,3 @@ class CLIPDataModule(pl.LightningDataModule):
         # with validation data
         return DataLoader(self.validation_set, batch_size=self.batch_size, shuffle=False,
                           num_workers=self.num_workers, drop_last=True)
-
-#
-# def main():
-#
-#
-# if __name__ == "__main__":
-#     main()
