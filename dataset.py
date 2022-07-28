@@ -66,8 +66,7 @@ class CLIPSet(Dataset):
         if not self.include_lidar_file_names:
             lidar_stack = lidar_stack[0]
 
-        # TODO: remove astype, put this in the parallel pickle file processor
-        future_joy_data = self.data['future_joystick'][index].astype(np.float32)
+        future_joy_data = self.data['future_joystick'][index]
         future_joy_data = future_joy_data[:self.joy_pred_len, :]
         return lidar_stack, future_joy_data
 
@@ -79,7 +78,7 @@ class CLIPDataModule(pl.LightningDataModule):
         """ Configure a CLIPDataModule
 
         :param data_dir: path to all the processed pickle files and lidar img directories
-        :param batch_size: number of lidar stacks and future joystic samples to pull from the
+        :param batch_size: number of lidar stacks and future joystick samples to pull from the
         dataloader
         :param num_workers: number of threads to use for the dataloaders
         :param delay: number of frames to skip from the beginning of each rosbag
