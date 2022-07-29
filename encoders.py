@@ -95,15 +95,20 @@ class LidarEncoder(nn.Module):
         :return: lidar feature tensor (batch_size, output_size)
         """
         batch_size = x.shape[0]
-        x = self.patch_embed(x)  # turn batch of images into embeddings
-        cls_token = self.cls_token.expand(batch_size, -1, -1)  # expand cls token from 1 batch
-        x = torch.cat((cls_token, x),
-                      dim=1)  # concatenate cls token to beginning of patch embeddings
-        x += self.positional_embeddings  # add learnable positional embeddings
-        x = self.encoder(x)  # pass input with cls token and positional
-        # embeddings through transformer encoder
-        cls_token = x[:, 0]  # keep only cls token, discard rest
-        x = self.mlp_head(cls_token)  # pass cls token into MLP head
+        # turn batch of images into embeddings
+        x = self.patch_embed(x)
+        # expand cls token from 1 batch
+        cls_token = self.cls_token.expand(batch_size, -1, -1)
+        # concatenate cls token to beginning of patch embeddings
+        x = torch.cat((cls_token, x), dim=1)
+        # add learnable positional embeddings
+        x += self.positional_embeddings
+        # pass input with cls token and positional embeddings through transformer encoder
+        x = self.encoder(x)
+        # keep only cls token, discard rest
+        cls_token = x[:, 0]
+        # pass cls token into MLP head
+        x = self.mlp_head(cls_token)
         return x
 
 
@@ -111,7 +116,7 @@ class JoyStickEncoder(nn.Module):
     """ MLP used to generate feature vectors for joystick input
     """
 
-    def __init__(self, input_dim: int, output_dim=512, dropout=0.2) -> None:
+    def __init__(self, input_dim: int, output_dim=512, dropout=0.) -> None:
         super(JoyStickEncoder, self).__init__()
         # two linear transformations
         self.fc1 = nn.Linear(input_dim, input_dim)
