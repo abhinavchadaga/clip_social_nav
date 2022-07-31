@@ -26,14 +26,14 @@ class PatchEmbedding(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (self.img_size // self.patch_size) ** 2
 
-        # projection layer for the goal patch
-        self.goal_proj = nn.Linear(in_features=2, out_features=embedding_size)
+        # # projection layer for the goal patch
+        # self.goal_proj = nn.Linear(in_features=2, out_features=embedding_size)
 
         # linearly transform patches
         self.img_patch_proj = nn.Linear(in_features=(self.patch_size ** 2) * self.input_channels,
                                         out_features=embedding_size)
 
-    def forward(self, lidar_batch: Tensor, goals_batch: Tensor) -> Tensor:
+    def forward(self, lidar_batch: Tensor) -> Tensor:
         """ Split a batch of images into patches and linearly embed each patch
 
         :param lidar_batch: input tensor (batch_size, channels, img_height, img_width)
@@ -56,10 +56,6 @@ class PatchEmbedding(nn.Module):
         lidar_batch = lidar_batch.flatten(-3)
         # linear transformation
         out = self.img_patch_proj(lidar_batch)
-        # project goals, add second dimension
-        # (batch size, 1, embedding_size)
-        # goals_batch = self.goal_proj(goals_batch).unsqueeze(dim=1)
-        # out = torch.cat((lidar_batch, goals_batch), dim=1)
         return out
 
 
@@ -81,9 +77,11 @@ class LidarEncoder(nn.Module):
         self.patch_embed = PatchEmbedding(img_size=img_size, input_channels=input_channels,
                                           patch_size=patch_size, embedding_size=embedding_size)
 
-        # class token from BERT
-        # contains all learned information
+        # class token from BERT, contains all learned information
         self.cls_token = nn.Parameter(torch.randn((1, 1, embedding_size)))
+
+        # project the goal tokens to embedding size
+        self.goal_proj = nn.Linear(in_features=2, out_features=embedding_size)
 
         # learnable positional embeddings for each patch
         self.positional_embeddings = nn.Parameter(
@@ -99,28 +97,37 @@ class LidarEncoder(nn.Module):
         # MLP head, only uses the cls token
         self.mlp_head = nn.Linear(embedding_size, output_dim)
 
-    def forward(self, x: Tensor) -> Tensor:
-        """ pass batch of images and return a feature vector
+    def forward(self, lidar_patches: Tensor, goals: Tensor) -> Tensor:
+        """ pass batch of images and goals and return a feature vector
 
-        :param x: input tensor (batch_size, num_channels, img_size, img_size)
-        :return: lidar feature tensor (batch_size, output_size)
+        Args:
+            lidar_patches: batch of lidar images (batch_size, num_patches, embedding size)
+            goals: batch of goals (batch_size, 2)
+
+        Returns:
+            feature vector of size (batch_size, output_dim)
+
         """
-        batch_size = x.shape[0]
+        batch_size = lidar_patches.shape[0]
         # turn batch of images into embeddings
-        x = self.patch_embed(x)
+        out = self.patch_embed(lidar_patches)
         # expand cls token from 1 batch
         cls_token = self.cls_token.expand(batch_size, -1, -1)
         # concatenate cls token to beginning of patch embeddings
-        x = torch.cat((cls_token, x), dim=1)
+        out = torch.cat((cls_token, out), dim=1)
         # add learnable positional embeddings
-        x += self.positional_embeddings
+        out += self.positional_embeddings
+        # project goals from (batch_size, 2) to (batch_size, 1, embedding_size)
+        goals = self.goal_proj(goals).unsqueeze(dim=1)
+        # concatenate goal tokens
+        out = torch.cat((out, goals), dim=1)
         # pass input with cls token and positional embeddings through transformer encoder
-        x = self.encoder(x)
+        out = self.encoder(out)
         # keep only cls token, discard rest
-        cls_token = x[:, 0]
+        out = out[:, 0]
         # pass cls token into MLP head
-        x = self.mlp_head(cls_token)
-        return x
+        out = self.mlp_head(out)
+        return out
 
 
 class JoyStickEncoder(nn.Module):
@@ -157,7 +164,6 @@ class JoyStickEncoder(nn.Module):
 
 def main():
     with torch.no_grad():
-        # load data
         data_path = './data'
         cprint(f'loading data from {data_path}...\n', 'green')
         dm = CLIPDataModule(data_dir='./data', batch_size=256, num_workers=2)
@@ -184,7 +190,7 @@ def main():
         input_channels = lidar_batch.shape[1]
         lidar_encoder = LidarEncoder(img_size=img_size, input_channels=input_channels,
                                      output_dim=output_size)
-        out: Tensor = lidar_encoder(lidar_batch)
+        out: Tensor = lidar_encoder(lidar_batch, relative_goals)
         out = out / out.norm(dim=1, keepdim=True)
         print(out.shape)
         print(f'lidar out max: {torch.max(out):.2f}')
