@@ -9,12 +9,12 @@ from termcolor import cprint
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
 from tqdm import tqdm
 
-from lidar_helper import get_stack
+from lidar_helper import get_stack, STACK_LEN
 
 
 class CLIPSet(Dataset):
     def __init__(self, pickle_file_path: str, delay=30, joy_pred_len=300,
-                 include_lidar_file_names=False) -> None:
+                 include_lidar_file_names=False, visualize_goal=False) -> None:
         """ create a CLIPSet object for a single rosbag
 
         :param pickle_file_path: path to the processed pickle file
@@ -47,18 +47,21 @@ class CLIPSet(Dataset):
 
         # toggle visualization for bev lidar images
         self.include_lidar_file_names = include_lidar_file_names
+        self.visualize_goal = visualize_goal
 
         # print delay frame information
         cprint('Delay frame is : ' + str(self.delay),
                'yellow', attrs=['bold'])
 
     def __len__(self) -> int:
-        return len(self.lidar_img_paths) - self.delay
+        return len(self.lidar_img_paths) - self.delay - STACK_LEN
 
-    def __getitem__(self, index: int) -> Tuple[np.ndarray, np.ndarray]:
-        # offset index
-        index = self.delay + index
+    def __getitem__(self, index: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        # skip the delay frames, and offset by STACK_LEN
+        # so that no delay frames are used in any lidar_stack
+        index = self.delay + STACK_LEN + index
 
+        # get lidar stack
         lidar_stack = get_stack(odom=self.data['odom'],
                                 lidar_img_dir=self.lidar_dir,
                                 i=index)
@@ -66,14 +69,23 @@ class CLIPSet(Dataset):
         if not self.include_lidar_file_names:
             lidar_stack = lidar_stack[0]
 
+        # get future joystick data
         future_joy_data = self.data['future_joystick'][index]
         future_joy_data = future_joy_data[:self.joy_pred_len, :]
-        return lidar_stack, future_joy_data
+
+        # get 10m goal relative to the current position of the robot
+        current_traj = self.data['human_expert_odom'][index]
+        robot_x, robot_y = current_traj[0][0], current_traj[0][1]
+        wf_goal_x, wf_goal_y = current_traj[-1][0], current_traj[-1][1]
+        rel_goal_x, rel_goal_y = wf_goal_x - robot_x, wf_goal_y - robot_y
+        relative_goal = np.array([rel_goal_x, rel_goal_y], dtype=np.float32)
+
+        return lidar_stack, future_joy_data, relative_goal
 
 
 class CLIPDataModule(pl.LightningDataModule):
     def __init__(self, data_dir: str, batch_size=int, num_workers=0, delay=30, joy_pred_len=300,
-                 include_lidar_file_names=False) \
+                 include_lidar_file_names=False, visualize_goal=False) \
             -> None:
         """ Configure a CLIPDataModule
 
@@ -92,6 +104,7 @@ class CLIPDataModule(pl.LightningDataModule):
         self.training_set = None
         self.joy_pred_len = joy_pred_len
         self.include_lidar_file_names = include_lidar_file_names
+        self.visualize_goal = visualize_goal
         if data_dir is None or not os.path.exists(data_dir):
             raise ValueError("Make sure to pass in a valid data directory")
 
@@ -113,7 +126,8 @@ class CLIPDataModule(pl.LightningDataModule):
             for pfp in tqdm(self.pickle_file_paths):
                 tmp_dataset = CLIPSet(pickle_file_path=pfp, delay=self.delay,
                                       joy_pred_len=self.joy_pred_len,
-                                      include_lidar_file_names=self.include_lidar_file_names)
+                                      include_lidar_file_names=self.include_lidar_file_names,
+                                      visualize_goal=self.visualize_goal)
                 datasets.append(tmp_dataset)
 
             # create full dataset by concatenating datasets

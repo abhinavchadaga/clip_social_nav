@@ -26,30 +26,41 @@ class PatchEmbedding(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (self.img_size // self.patch_size) ** 2
 
-        # linearly transform patches
-        self.lin_proj = nn.Linear(in_features=(self.patch_size ** 2) * self.input_channels,
-                                  out_features=embedding_size)
+        # projection layer for the goal patch
+        self.goal_proj = nn.Linear(in_features=2, out_features=embedding_size)
 
-    def forward(self, x: Tensor) -> Tensor:
+        # linearly transform patches
+        self.img_patch_proj = nn.Linear(in_features=(self.patch_size ** 2) * self.input_channels,
+                                        out_features=embedding_size)
+
+    def forward(self, lidar_batch: Tensor, goals_batch: Tensor) -> Tensor:
         """ Split a batch of images into patches and linearly embed each patch
 
-        :param x: input tensor (batch_size, channels, img_height, img_width)
+        :param lidar_batch: input tensor (batch_size, channels, img_height, img_width)
         :return: a batch of patch embeddings (batch_size, num_patches, embedding_size)
         """
         # sanity checks
-        assert len(x.shape) == 4
-        batch_size, num_channels, height, width = x.shape
+        assert len(lidar_batch.shape) == 4
+        batch_size, num_channels, height, width = lidar_batch.shape
         assert height == width and height == self.img_size
 
         # batch_size, channels, v slices, h slices, patch_size ** 2
-        x = x.unfold(2, self.patch_size, self.patch_size).unfold(3, self.patch_size,
-                                                                 self.patch_size)
+        lidar_batch = lidar_batch.unfold(2, self.patch_size, self.patch_size) \
+            .unfold(3, self.patch_size, self.patch_size)
         # combine vertical and horizontal slices
-        x = x.reshape(x.shape[0], x.shape[1], -1, self.patch_size, self.patch_size)
-        x = x.movedim(1, -1)  # batch_size, num patches p channel, patch_size ** 2, channels
-        x = x.flatten(-3)  # 3D patch to 1D patch vector
-        x = self.lin_proj.forward(x)  # linear transformation
-        return x
+        lidar_batch = lidar_batch.reshape(lidar_batch.shape[0], lidar_batch.shape[1], -1,
+                                          self.patch_size, self.patch_size)
+        # batch_size, num patches per channel, patch_size ** 2, channels
+        lidar_batch = lidar_batch.movedim(1, -1)
+        # 3D patch to 1D patch vector
+        lidar_batch = lidar_batch.flatten(-3)
+        # linear transformation
+        out = self.img_patch_proj(lidar_batch)
+        # project goals, add second dimension
+        # (batch size, 1, embedding_size)
+        # goals_batch = self.goal_proj(goals_batch).unsqueeze(dim=1)
+        # out = torch.cat((lidar_batch, goals_batch), dim=1)
+        return out
 
 
 class LidarEncoder(nn.Module):
@@ -165,6 +176,7 @@ def main():
         # pass lidar data through encoder
         start = time.time()
         lidar_batch = batch[0]
+        relative_goals = batch[2]
         print(f'lidar_batch max: {torch.max(lidar_batch):.2f}')
         print(f'lidar_batch min: {torch.min(lidar_batch):.2f}')
         cprint(f'lidar_batch shape: {lidar_batch.shape}', 'green')
