@@ -21,11 +21,11 @@ def affineinverse(M) -> np.ndarray:
 def get_affine_matrix_quat(x, y, quaternion) -> np.ndarray:
     theta = R.from_quat(quaternion).as_euler('XYZ')[2]
     return np.array([[np.cos(theta), -np.sin(theta), x],
-                     [np.sin(theta), np.cos(theta), y],
-                     [0, 0, 1]])
+                     [np.sin(theta), np.cos(theta), y], [0, 0, 1]])
 
 
-def get_stack(odom: list, lidar_img_dir: str, i: int) -> Tuple[np.ndarray, np.ndarray]:
+def get_stack(odom: list, lidar_img_dir: str,
+              i: int) -> Tuple[np.ndarray, np.ndarray]:
     """ Get a stack of 5 lidar images given index time = t
 
     :param odom: list of odometry values from the robot
@@ -40,34 +40,28 @@ def get_stack(odom: list, lidar_img_dir: str, i: int) -> Tuple[np.ndarray, np.nd
         img = np.asarray(img)
         lidar_stack.append(img)
 
-    odom_stack = odom[i - STACK_LEN + 1: i + 1]
+    odom_stack = odom[i - STACK_LEN + 1:i + 1]
     lidar_stack = [lidar_stack[i] for i in [0, 5, 10, 15, 19]]
-    odom_stack = [odom_stack[i]
-                  for i in [0, 5, 10, 15, 19]]
+    odom_stack = [odom_stack[i] for i in [0, 5, 10, 15, 19]]
 
     # for visualization purposes
     img_file_names = [x for x in range(i - STACK_LEN + 1, i + 1)]
-    img_file_names = [img_file_names[i]
-                      for i in [0, 5, 10, 15, 19]]
+    img_file_names = [img_file_names[i] for i in [0, 5, 10, 15, 19]]
 
     # rotate previous frames to current frame
     last_frame = odom_stack[-1]
-    t_odom_5 = get_affine_matrix_quat(
-        last_frame[0], last_frame[1], last_frame[2])
-    t_odom_4 = get_affine_matrix_quat(odom_stack[-2][0],
-                                      odom_stack[-2][1],
+    t_odom_5 = get_affine_matrix_quat(last_frame[0], last_frame[1],
+                                      last_frame[2])
+    t_odom_4 = get_affine_matrix_quat(odom_stack[-2][0], odom_stack[-2][1],
                                       odom_stack[-2][2])
     t_4_5 = affineinverse(t_odom_4) @ t_odom_5
-    t_odom_3 = get_affine_matrix_quat(odom_stack[-3][0],
-                                      odom_stack[-3][1],
+    t_odom_3 = get_affine_matrix_quat(odom_stack[-3][0], odom_stack[-3][1],
                                       odom_stack[-3][2])
     t_3_5 = affineinverse(t_odom_3) @ t_odom_5
-    t_odom_2 = get_affine_matrix_quat(odom_stack[-4][0],
-                                      odom_stack[-4][1],
+    t_odom_2 = get_affine_matrix_quat(odom_stack[-4][0], odom_stack[-4][1],
                                       odom_stack[-4][2])
     t_2_5 = affineinverse(t_odom_2) @ t_odom_5
-    t_odom_1 = get_affine_matrix_quat(odom_stack[-5][0],
-                                      odom_stack[-5][1],
+    t_odom_1 = get_affine_matrix_quat(odom_stack[-5][0], odom_stack[-5][1],
                                       odom_stack[-5][2])
     t_1_5 = affineinverse(t_odom_1) @ t_odom_5
     # now do the rotations
@@ -75,14 +69,10 @@ def get_stack(odom: list, lidar_img_dir: str, i: int) -> Tuple[np.ndarray, np.nd
     t_2_5[:, -1] *= -20
     t_3_5[:, -1] *= -20
     t_4_5[:, -1] *= -20
-    lidar_stack[0] = cv2.warpAffine(
-        lidar_stack[0], t_1_5[:2, :], (401, 401))
-    lidar_stack[1] = cv2.warpAffine(
-        lidar_stack[1], t_2_5[:2, :], (401, 401))
-    lidar_stack[2] = cv2.warpAffine(
-        lidar_stack[2], t_3_5[:2, :], (401, 401))
-    lidar_stack[3] = cv2.warpAffine(
-        lidar_stack[3], t_4_5[:2, :], (401, 401))
+    lidar_stack[0] = cv2.warpAffine(lidar_stack[0], t_1_5[:2, :], (401, 401))
+    lidar_stack[1] = cv2.warpAffine(lidar_stack[1], t_2_5[:2, :], (401, 401))
+    lidar_stack[2] = cv2.warpAffine(lidar_stack[2], t_3_5[:2, :], (401, 401))
+    lidar_stack[3] = cv2.warpAffine(lidar_stack[3], t_4_5[:2, :], (401, 401))
 
     # combine the 5 single-channel images into a single image of 5 channels
     lidar_stack = np.asarray(lidar_stack).astype(np.float32)
@@ -91,7 +81,8 @@ def get_stack(odom: list, lidar_img_dir: str, i: int) -> Tuple[np.ndarray, np.nd
     return lidar_stack, img_file_names
 
 
-def visualize_lidar_stack(lidar_stack: np.ndarray, file_names: np.ndarray) -> None:
+def visualize_lidar_stack(lidar_stack: np.ndarray,
+                          file_names: np.ndarray) -> None:
     """
 
     :param lidar_stack:

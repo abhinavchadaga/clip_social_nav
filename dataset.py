@@ -13,8 +13,14 @@ from lidar_helper import get_stack, STACK_LEN
 
 
 class CLIPSet(Dataset):
-    def __init__(self, pickle_file_path: str, delay=30, joy_pred_len=300,
-                 include_lidar_file_names=False, visualize_goal=False, verbose=False) -> None:
+
+    def __init__(self,
+                 pickle_file_path: str,
+                 delay=30,
+                 joy_pred_len=300,
+                 include_lidar_file_names=False,
+                 visualize_goal=False,
+                 verbose=False) -> None:
         """ create a CLIPSet object for a single rosbag
 
         :param pickle_file_path: path to the processed pickle file
@@ -25,9 +31,11 @@ class CLIPSet(Dataset):
 
         # check if the pickle file path exists
         # check if the pickle file is processed using file suffix
-        if not os.path.exists(pickle_file_path.replace('_data.pkl', '_final.pkl')):
+        if not os.path.exists(
+                pickle_file_path.replace('_data.pkl', '_final.pkl')):
             raise Exception(
-                "Pickle file does not exist. Please process the pickle file first..")
+                "Pickle file does not exist. Please process the pickle file first.."
+            )
 
         self.data = pickle.load(
             open(pickle_file_path.replace('_data.pkl', '_final.pkl'), 'rb'))
@@ -50,7 +58,8 @@ class CLIPSet(Dataset):
     def __len__(self) -> int:
         return len(self.lidar_img_paths) - self.delay - STACK_LEN
 
-    def __getitem__(self, index: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def __getitem__(self,
+                    index: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         # skip the delay frames, and offset by STACK_LEN
         # so that no delay frames are used in any lidar_stack
         index = self.delay + STACK_LEN + index
@@ -67,7 +76,8 @@ class CLIPSet(Dataset):
         future_joy_data = self.data['future_joystick'][index]
         # pad with zeros if the length of the joystick sample is not long enough
         diff = max(0, self.joy_pred_len - future_joy_data.shape[0])
-        future_joy_data = np.pad(future_joy_data, pad_width=((0, diff), (0, 0)))
+        future_joy_data = np.pad(future_joy_data,
+                                 pad_width=((0, diff), (0, 0)))
         future_joy_data = future_joy_data[:self.joy_pred_len, :]
 
         # get 10m goal relative to the current position of the robot
@@ -125,18 +135,23 @@ class CLIPDataModule(pl.LightningDataModule):
         """
         if stage in (None, 'fit'):
             # print information
-            cprint(f'loading data from {self.data_dir}...', 'green', attrs=['bold'])
+            cprint(f'loading data from {self.data_dir}...',
+                   'green',
+                   attrs=['bold'])
             if self.verbose:
                 cprint(f'skip first {self.delay + STACK_LEN} frames', 'cyan')
                 cprint(f'batch size: {self.batch_size}', 'cyan')
-                cprint(f'future joystick length: {self.joy_pred_len}\n', 'cyan')
+                cprint(f'future joystick length: {self.joy_pred_len}\n',
+                       'cyan')
 
             datasets = []
             for pfp in tqdm(self.pickle_file_paths, position=0, leave=True):
-                tmp_dataset = CLIPSet(pickle_file_path=pfp, delay=self.delay,
-                                      joy_pred_len=self.joy_pred_len,
-                                      include_lidar_file_names=self.include_lidar_file_names,
-                                      visualize_goal=self.visualize_goal)
+                tmp_dataset = CLIPSet(
+                    pickle_file_path=pfp,
+                    delay=self.delay,
+                    joy_pred_len=self.joy_pred_len,
+                    include_lidar_file_names=self.include_lidar_file_names,
+                    visualize_goal=self.visualize_goal)
                 datasets.append(tmp_dataset)
 
             # create full dataset by concatenating datasets
@@ -145,6 +160,10 @@ class CLIPDataModule(pl.LightningDataModule):
             # setup 75-25 training-validation split
             train_size = int(0.75 * len(self.dataset))
             val_size = len(self.dataset) - train_size
+            # display information
+            if self.verbose:
+                cprint(f'training size: {train_size} samples', 'cyan')
+                cprint(f'validation size: {val_size} samples', 'cyan')
 
             # randomly split into training and validation set
             self.training_set, self.validation_set = random_split(
@@ -153,11 +172,17 @@ class CLIPDataModule(pl.LightningDataModule):
     def train_dataloader(self) -> DataLoader:
         # return a pytorch dataloader object
         # with training data
-        return DataLoader(self.training_set, batch_size=self.batch_size, shuffle=True,
-                          num_workers=self.num_workers, drop_last=True)
+        return DataLoader(self.training_set,
+                          batch_size=self.batch_size,
+                          shuffle=True,
+                          num_workers=self.num_workers,
+                          drop_last=True)
 
     def val_dataloader(self) -> DataLoader:
         # return a pytorch dataloader object
         # with validation data
-        return DataLoader(self.validation_set, batch_size=self.batch_size, shuffle=False,
-                          num_workers=self.num_workers, drop_last=True)
+        return DataLoader(self.validation_set,
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers,
+                          drop_last=True)

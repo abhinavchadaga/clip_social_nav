@@ -25,13 +25,14 @@ class PatchEmbedding(nn.Module):
         self.input_channels = input_channels
         self.img_size = img_size
         self.patch_size = patch_size
-        self.num_patches = (self.img_size // self.patch_size) ** 2
+        self.num_patches = (self.img_size // self.patch_size)**2
 
         # # projection layer for the goal patch
         # self.goal_proj = nn.Linear(in_features=2, out_features=embedding_size)
 
         # linearly transform patches
-        self.img_patch_proj = nn.Linear(in_features=(self.patch_size ** 2) * self.input_channels,
+        self.img_patch_proj = nn.Linear(in_features=(self.patch_size**2) *
+                                        self.input_channels,
                                         out_features=embedding_size)
 
     def forward(self, lidar_batch: Tensor) -> Tensor:
@@ -49,7 +50,8 @@ class PatchEmbedding(nn.Module):
         lidar_batch = lidar_batch.unfold(2, self.patch_size, self.patch_size) \
             .unfold(3, self.patch_size, self.patch_size)
         # combine vertical and horizontal slices
-        lidar_batch = lidar_batch.reshape(lidar_batch.shape[0], lidar_batch.shape[1], -1,
+        lidar_batch = lidar_batch.reshape(lidar_batch.shape[0],
+                                          lidar_batch.shape[1], -1,
                                           self.patch_size, self.patch_size)
         # batch_size, num patches per channel, patch_size ** 2, channels
         lidar_batch = lidar_batch.movedim(1, -1)
@@ -64,8 +66,15 @@ class LidarEncoder(nn.Module):
     """ Vision Transformer used to generate lidar feature vector
     """
 
-    def __init__(self, img_size: int, input_channels: int, patch_size=32, embedding_size=1280,
-                 output_dim=512, msa_heads=8, activation='gelu', num_layers=6) -> None:
+    def __init__(self,
+                 img_size: int,
+                 input_channels: int,
+                 patch_size=32,
+                 embedding_size=1280,
+                 output_dim=512,
+                 msa_heads=8,
+                 activation='gelu',
+                 num_layers=6) -> None:
         """ Create a LidarEncoder
 
         :param img_size: size of the input images (assume square)
@@ -75,8 +84,10 @@ class LidarEncoder(nn.Module):
         :param output_dim: size of the output feature
         """
         super(LidarEncoder, self).__init__()
-        self.patch_embed = PatchEmbedding(img_size=img_size, input_channels=input_channels,
-                                          patch_size=patch_size, embedding_size=embedding_size)
+        self.patch_embed = PatchEmbedding(img_size=img_size,
+                                          input_channels=input_channels,
+                                          patch_size=patch_size,
+                                          embedding_size=embedding_size)
 
         # class token from BERT, contains all learned information
         self.cls_token = nn.Parameter(torch.randn((1, 1, embedding_size)))
@@ -89,10 +100,13 @@ class LidarEncoder(nn.Module):
             torch.randn(1, 1 + self.patch_embed.num_patches, embedding_size))
 
         # transformer encoder
-        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_size, nhead=msa_heads,
-                                                   activation=activation, batch_first=True)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_size,
+                                                   nhead=msa_heads,
+                                                   activation=activation,
+                                                   batch_first=True)
         self.layer_norm = nn.LayerNorm(embedding_size, eps=1e-6)
-        self.encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=num_layers,
+        self.encoder = nn.TransformerEncoder(encoder_layer=encoder_layer,
+                                             num_layers=num_layers,
                                              norm=self.layer_norm)
 
         # MLP head, only uses the cls token
@@ -167,7 +181,11 @@ class JoyStickEncoder(nn.Module):
 def main():
     with torch.no_grad():
         data_path = './data'
-        dm = CLIPDataModule(data_dir=data_path, batch_size=256, num_workers=2, future_joy_len=500, verbose=True)
+        dm = CLIPDataModule(data_dir=data_path,
+                            batch_size=256,
+                            num_workers=2,
+                            future_joy_len=500,
+                            verbose=True)
         dm.setup()
 
         cprint('creating trainloader...\n', 'green')
@@ -200,7 +218,9 @@ def main():
         print(out.shape)
         print(f'lidar out max: {torch.max(out):.2f}')
         print(f'lidar out min: {torch.min(out):.2f}')
-        cprint(f'elapsed time: {time.time() - start:.2f} s\n', 'green', attrs=['bold'])
+        cprint(f'elapsed time: {time.time() - start:.2f} s\n',
+               'green',
+               attrs=['bold'])
 
         # pass joystick data through encoder
         start = time.time()
@@ -209,13 +229,16 @@ def main():
         print(f'joystick batch min: {torch.min(joy_batch):.2f}')
         cprint(f'joy_batch shape: {joy_batch.shape}', 'green')
         input_dim = joy_batch.shape[1]
-        joystick_encoder = JoyStickEncoder(input_dim=input_dim, output_dim=output_size)
+        joystick_encoder = JoyStickEncoder(input_dim=input_dim,
+                                           output_dim=output_size)
         joy_out = joystick_encoder(joy_batch)
         joy_out = joy_out / joy_out.norm(dim=1, keepdim=True)
         print(joy_out.shape)
         print(f'joystick out max: {torch.max(joy_out):.2f}')
         print(f'joystick out min: {torch.min(joy_out):.2f}')
-        cprint(f'elapsed time: {time.time() - start:.2f} s', 'green', attrs=['bold'])
+        cprint(f'elapsed time: {time.time() - start:.2f} s',
+               'green',
+               attrs=['bold'])
 
 
 if __name__ == '__main__':
