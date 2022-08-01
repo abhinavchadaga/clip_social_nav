@@ -1,3 +1,4 @@
+import time
 from typing import Tuple
 
 import numpy as np
@@ -6,6 +7,7 @@ import torch
 from torch import nn, Tensor
 from torch.nn import functional as F
 
+from dataset import CLIPDataModule
 from encoders import LidarEncoder, JoyStickEncoder
 
 
@@ -34,18 +36,21 @@ class CLIPSocialNavModel(pl.LightningModule):
     """ Dual Encoder CLIP Model for learning socially compliant features
     """
 
-    def __init__(self, l_img_size=401, l_input_channels=5, l_patch_size=32, l_embedding_size=1280,
-                 j_input_dim=900, j_dropout=0., output_dim=512, lr=3e-5, weight_decay=1e-5,
-                 temperature=0.7) -> None:
+    def __init__(self, l_img_size=401, l_input_channels=5, l_patch_size=32, l_embedding_size=1280, l_msa_heads=8,
+                 l_activation='gelu', l_num_layers=6, future_joy_len=300, j_dropout=0., output_dim=512, lr=3e-5,
+                 weight_decay=1e-5, temperature=0.7) -> None:
         super(CLIPSocialNavModel, self).__init__()
         # create encoders
         self.lidar_encoder = LidarEncoder(img_size=l_img_size,
                                           input_channels=l_input_channels,
                                           patch_size=l_patch_size,
                                           embedding_size=l_embedding_size,
-                                          output_dim=output_dim)
+                                          output_dim=output_dim,
+                                          msa_heads=l_msa_heads,
+                                          activation=l_activation,
+                                          num_layers=l_num_layers)
 
-        self.joystick_encoder = JoyStickEncoder(input_dim=j_input_dim,
+        self.joystick_encoder = JoyStickEncoder(input_dim=future_joy_len,
                                                 output_dim=output_dim,
                                                 dropout=j_dropout)
 
@@ -55,7 +60,7 @@ class CLIPSocialNavModel(pl.LightningModule):
         self.learning_rate = lr
         self.weight_decay = weight_decay
 
-    def forward(self, lidar: Tensor, joystick: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, lidar: Tensor, joystick: Tensor, rel_goals: Tensor) -> Tuple[Tensor, Tensor]:
         """ forward pass through the CLIP model, sourced from OpenAI CLIP model
 
         :param lidar: batch of lidar img stacks (batch_size, output_dim)
@@ -63,8 +68,8 @@ class CLIPSocialNavModel(pl.LightningModule):
         :return: concatenated tensor containing lidar and joystick features (batch_size * 2,
         output_size)
         """
-        lidar_features = self.lidar_encoder(lidar)
-        joystick_features = self.joystick_encoder(joystick)
+        lidar_features = self.lidar_encoder.forward(lidar, rel_goals)
+        joystick_features = self.joystick_encoder.forward(joystick)
 
         # L2 normalize features
         lidar_features = lidar_features / lidar_features.norm(dim=-1, keepdim=True)
@@ -92,15 +97,39 @@ class CLIPSocialNavModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         """ Forward pass and compute training loss for one step
         """
-        lidar, joystick = batch
-        lidar_features, joystick_features = self.forward(lidar.float(), joystick.float())
+        lidar, joystick, goals = batch
+        lidar_features, joystick_features = self.forward(lidar.float(), joystick.float(), goals.float())
         loss = self.loss(lidar_features, joystick_features)
         self.log('training_loss', loss, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        lidar, joystick = batch
-        lidar_features, joystick_features = self.forward(lidar, joystick)
+        lidar, joystick, goals = batch
+        lidar_features, joystick_features = self.forward(lidar.float(), joystick.float(), goals.float())
         loss = self.loss(lidar_features, joystick_features)
         self.log('validation_loss', loss, prog_bar=True, logger=True)
         return loss
+
+
+def main():
+    # test one pass
+    dm = CLIPDataModule(data_dir='./data',
+                        batch_size=128,
+                        num_workers=8,
+                        future_joy_len=500,
+                        verbose=True)
+    dm.setup()
+    batch = next(iter(dm.train_dataloader()))
+    lidar, joystick, goals = batch
+    print(lidar.shape)
+    print(joystick.shape)
+    print(goals.shape)
+    model = CLIPSocialNavModel(future_joy_len=joystick.shape[1])
+    start = time.time()
+    out = model.forward(*batch)
+    print(f'elapsed time: {time.time() - start:.2f} s')
+    print('success')
+
+
+if __name__ == '__main__':
+    main()

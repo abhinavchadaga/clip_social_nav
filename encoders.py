@@ -15,10 +15,11 @@ class PatchEmbedding(nn.Module):
             None:
         """ Initialize a PatchEmbedding Layer
 
-        :param img_size: size of the input images (assume square)
-        :param input_channels: number of input channels (1 for grayscale, 3 for RGB)
-        :param patch_size: size of a 2D patch (assume square)
-        :param embedding_size: size of the embedding for a patch (input to the transformer)
+        Args:
+            img_size: size of the input images (assume square)
+            input_channels: number of input channels
+            patch_size: size of a 2d patch (assume square)
+            embedding_size: size of the embedding vector for a patch (input to the transformer)
         """
         super(PatchEmbedding, self).__init__()
         self.input_channels = input_channels
@@ -64,7 +65,7 @@ class LidarEncoder(nn.Module):
     """
 
     def __init__(self, img_size: int, input_channels: int, patch_size=32, embedding_size=1280,
-                 output_dim=512) -> None:
+                 output_dim=512, msa_heads=8, activation='gelu', num_layers=6) -> None:
         """ Create a LidarEncoder
 
         :param img_size: size of the input images (assume square)
@@ -88,10 +89,10 @@ class LidarEncoder(nn.Module):
             torch.randn(1, 1 + self.patch_embed.num_patches, embedding_size))
 
         # transformer encoder
-        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_size, nhead=8,
-                                                   activation='gelu', batch_first=True)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_size, nhead=msa_heads,
+                                                   activation=activation, batch_first=True)
         self.layer_norm = nn.LayerNorm(embedding_size, eps=1e-6)
-        self.encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=6,
+        self.encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=num_layers,
                                              norm=self.layer_norm)
 
         # MLP head, only uses the cls token
@@ -134,8 +135,9 @@ class JoyStickEncoder(nn.Module):
     """ MLP used to generate feature vectors for joystick input
     """
 
-    def __init__(self, input_dim: int, output_dim=512, dropout=0.) -> None:
+    def __init__(self, input_dim=300, output_dim=512, dropout=0.) -> None:
         super(JoyStickEncoder, self).__init__()
+        input_dim *= 3
         # two linear transformations
         self.fc1 = nn.Linear(input_dim, input_dim)
         self.fc2 = nn.Linear(input_dim, output_dim)
@@ -165,8 +167,7 @@ class JoyStickEncoder(nn.Module):
 def main():
     with torch.no_grad():
         data_path = './data'
-        cprint(f'loading data from {data_path}...\n', 'green')
-        dm = CLIPDataModule(data_dir='./data', batch_size=256, num_workers=2)
+        dm = CLIPDataModule(data_dir=data_path, batch_size=256, num_workers=2, future_joy_len=500, verbose=True)
         dm.setup()
 
         cprint('creating trainloader...\n', 'green')
@@ -188,8 +189,12 @@ def main():
         cprint(f'lidar_batch shape: {lidar_batch.shape}', 'green')
         img_size = lidar_batch.shape[2]
         input_channels = lidar_batch.shape[1]
-        lidar_encoder = LidarEncoder(img_size=img_size, input_channels=input_channels,
-                                     output_dim=output_size)
+        lidar_encoder = LidarEncoder(img_size=img_size,
+                                     input_channels=input_channels,
+                                     output_dim=output_size,
+                                     msa_heads=4,
+                                     num_layers=3)
+
         out: Tensor = lidar_encoder(lidar_batch, relative_goals)
         out = out / out.norm(dim=1, keepdim=True)
         print(out.shape)
@@ -203,7 +208,7 @@ def main():
         print(f'joystick batch max: {torch.max(joy_batch):.2f}')
         print(f'joystick batch min: {torch.min(joy_batch):.2f}')
         cprint(f'joy_batch shape: {joy_batch.shape}', 'green')
-        input_dim = joy_batch.shape[1] * joy_batch.shape[2]
+        input_dim = joy_batch.shape[1]
         joystick_encoder = JoyStickEncoder(input_dim=input_dim, output_dim=output_size)
         joy_out = joystick_encoder(joy_batch)
         joy_out = joy_out / joy_out.norm(dim=1, keepdim=True)

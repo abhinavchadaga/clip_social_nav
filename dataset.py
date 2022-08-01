@@ -7,14 +7,14 @@ import numpy as np
 import pytorch_lightning as pl
 from termcolor import cprint
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from lidar_helper import get_stack, STACK_LEN
 
 
 class CLIPSet(Dataset):
     def __init__(self, pickle_file_path: str, delay=30, joy_pred_len=300,
-                 include_lidar_file_names=False, visualize_goal=False) -> None:
+                 include_lidar_file_names=False, visualize_goal=False, verbose=False) -> None:
         """ create a CLIPSet object for a single rosbag
 
         :param pickle_file_path: path to the processed pickle file
@@ -29,8 +29,6 @@ class CLIPSet(Dataset):
             raise Exception(
                 "Pickle file does not exist. Please process the pickle file first..")
 
-        # load pickle file into data attribute
-        cprint('Pickle file exists. Loading from pickle file')
         self.data = pickle.load(
             open(pickle_file_path.replace('_data.pkl', '_final.pkl'), 'rb'))
 
@@ -48,10 +46,6 @@ class CLIPSet(Dataset):
         # toggle visualization for bev lidar images
         self.include_lidar_file_names = include_lidar_file_names
         self.visualize_goal = visualize_goal
-
-        # print delay frame information
-        cprint('Delay frame is : ' + str(self.delay),
-               'yellow', attrs=['bold'])
 
     def __len__(self) -> int:
         return len(self.lidar_img_paths) - self.delay - STACK_LEN
@@ -71,6 +65,9 @@ class CLIPSet(Dataset):
 
         # get future joystick data
         future_joy_data = self.data['future_joystick'][index]
+        # pad with zeros if the length of the joystick sample is not long enough
+        diff = max(0, self.joy_pred_len - future_joy_data.shape[0])
+        future_joy_data = np.pad(future_joy_data, pad_width=((0, diff), (0, 0)))
         future_joy_data = future_joy_data[:self.joy_pred_len, :]
 
         # get 10m goal relative to the current position of the robot
@@ -84,8 +81,8 @@ class CLIPSet(Dataset):
 
 
 class CLIPDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir: str, batch_size=int, num_workers=0, delay=30, joy_pred_len=300,
-                 include_lidar_file_names=False, visualize_goal=False) \
+    def __init__(self, data_dir: str, batch_size=int, num_workers=0, delay=30, future_joy_len=300,
+                 include_lidar_file_names=False, visualize_goal=False, verbose=False) \
             -> None:
         """ Configure a CLIPDataModule
 
@@ -94,17 +91,17 @@ class CLIPDataModule(pl.LightningDataModule):
         dataloader
         :param num_workers: number of threads to use for the dataloaders
         :param delay: number of frames to skip from the beginning of each rosbag
-        :param joy_pred_len: length of the future joystick data from a time t
+        :param future_joy_len: length of the future joystick data from a time t
         :param include_lidar_file_names: include file names for lidar images, used when visualizing
         """
 
         super(CLIPDataModule, self).__init__()
+        self.data_dir = data_dir
         self.dataset = None
         self.validation_set = None
         self.training_set = None
-        self.joy_pred_len = joy_pred_len
-        self.include_lidar_file_names = include_lidar_file_names
-        self.visualize_goal = visualize_goal
+        self.joy_pred_len = future_joy_len
+
         if data_dir is None or not os.path.exists(data_dir):
             raise ValueError("Make sure to pass in a valid data directory")
 
@@ -112,9 +109,14 @@ class CLIPDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.delay = delay
 
+        # diagnostics
+        self.include_lidar_file_names = include_lidar_file_names
+        self.visualize_goal = visualize_goal
+        self.verbose = verbose
+
         # load the pickle files
         self.pickle_file_paths = glob.glob(
-            os.path.join(data_dir, '*_final.pkl'))
+            os.path.join(self.data_dir, '*_final.pkl'))
 
     def setup(self, stage: Optional[str] = None) -> None:
         """ Setup training and validation splits
@@ -122,8 +124,15 @@ class CLIPDataModule(pl.LightningDataModule):
         :param stage: one of either ['fit', 'validate', 'test', 'predict']
         """
         if stage in (None, 'fit'):
+            # print information
+            cprint(f'loading data from {self.data_dir}...', 'green', attrs=['bold'])
+            if self.verbose:
+                cprint(f'skip first {self.delay + STACK_LEN} frames', 'cyan')
+                cprint(f'batch size: {self.batch_size}', 'cyan')
+                cprint(f'future joystick length: {self.joy_pred_len}\n', 'cyan')
+
             datasets = []
-            for pfp in tqdm(self.pickle_file_paths):
+            for pfp in tqdm(self.pickle_file_paths, position=0, leave=True):
                 tmp_dataset = CLIPSet(pickle_file_path=pfp, delay=self.delay,
                                       joy_pred_len=self.joy_pred_len,
                                       include_lidar_file_names=self.include_lidar_file_names,
