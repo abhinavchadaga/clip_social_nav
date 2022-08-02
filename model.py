@@ -40,31 +40,33 @@ class CLIPSocialNavModel(pl.LightningModule):
     """
 
     def __init__(self,
-                 l_img_size=401,
-                 l_input_channels=5,
-                 l_patch_size=32,
-                 l_embedding_size=1280,
-                 l_msa_heads=8,
-                 l_activation='gelu',
-                 l_num_layers=6,
-                 future_joy_len=300,
-                 j_dropout=0.,
-                 output_dim=512,
+                 img_size=401,
+                 input_channels=5,
+                 patch_size=16,
+                 embedding_size=128,
+                 nhead=8,
+                 le_dropout=0.1,
+                 le_activation='gelu',
+                 le_num_layers=6,
+                 je_input_dim=300,
+                 j_dropout=0.0,
+                 output_dim=128,
                  lr=3e-5,
                  weight_decay=1e-5,
                  temperature=0.7) -> None:
         super(CLIPSocialNavModel, self).__init__()
         # create encoders
-        self.lidar_encoder = LidarEncoder(img_size=l_img_size,
-                                          input_channels=l_input_channels,
-                                          patch_size=l_patch_size,
-                                          embedding_size=l_embedding_size,
-                                          output_dim=output_dim,
-                                          msa_heads=l_msa_heads,
-                                          activation=l_activation,
-                                          num_layers=l_num_layers)
+        self.lidar_encoder = LidarEncoder(img_size=img_size,
+                                          input_channels=input_channels,
+                                          patch_size=patch_size,
+                                          embedding_size=embedding_size,
+                                          nhead=nhead,
+                                          dropout=le_dropout,
+                                          activation=le_activation,
+                                          num_layers=le_num_layers,
+                                          output_dim=output_dim)
 
-        self.joystick_encoder = JoyStickEncoder(input_dim=future_joy_len,
+        self.joystick_encoder = JoyStickEncoder(input_dim=je_input_dim,
                                                 output_dim=output_dim,
                                                 dropout=j_dropout)
 

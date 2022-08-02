@@ -11,7 +11,7 @@ class PatchEmbedding(nn.Module):
     """ Convert a 2D image into 1D patches and embed them
     """
 
-    def __init__(self, img_size: int, input_channels: int, patch_size=32, embedding_size=1280) -> \
+    def __init__(self, img_size: int, input_channels: int, patch_size: int, embedding_size: int) -> \
             None:
         """ Initialize a PatchEmbedding Layer
 
@@ -66,15 +66,9 @@ class LidarEncoder(nn.Module):
     """ Vision Transformer used to generate lidar feature vector
     """
 
-    def __init__(self,
-                 img_size: int,
-                 input_channels: int,
-                 patch_size=32,
-                 embedding_size=1280,
-                 output_dim=512,
-                 msa_heads=8,
-                 activation='gelu',
-                 num_layers=6) -> None:
+    def __init__(self, img_size: int, input_channels: int, patch_size: int,
+                 embedding_size: int, nhead: int, dropout: float,
+                 activation: str, num_layers: int, output_dim: int) -> None:
         """ Create a LidarEncoder
 
         :param img_size: size of the input images (assume square)
@@ -101,16 +95,20 @@ class LidarEncoder(nn.Module):
 
         # transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_size,
-                                                   nhead=msa_heads,
+                                                   nhead=nhead,
+                                                   dropout=dropout,
                                                    activation=activation,
                                                    batch_first=True)
+
         self.layer_norm = nn.LayerNorm(embedding_size, eps=1e-6)
         self.encoder = nn.TransformerEncoder(encoder_layer=encoder_layer,
                                              num_layers=num_layers,
                                              norm=self.layer_norm)
 
         # MLP head, only uses the cls token
-        self.mlp_head = nn.Linear(embedding_size, output_dim)
+        self.mlp_head = nn.Sequential(nn.Linear(embedding_size, output_dim),
+                                      nn.ReLU(),
+                                      nn.Linear(output_dim, output_dim))
 
     def forward(self, lidar_patches: Tensor, goals: Tensor) -> Tensor:
         """ pass batch of images and goals and return a feature vector
@@ -149,7 +147,7 @@ class JoyStickEncoder(nn.Module):
     """ MLP used to generate feature vectors for joystick input
     """
 
-    def __init__(self, input_dim=300, output_dim=512, dropout=0.) -> None:
+    def __init__(self, input_dim, output_dim, dropout) -> None:
         super(JoyStickEncoder, self).__init__()
         input_dim *= 3
         # two linear transformations
@@ -210,7 +208,7 @@ def main():
         lidar_encoder = LidarEncoder(img_size=img_size,
                                      input_channels=input_channels,
                                      output_dim=output_size,
-                                     msa_heads=4,
+                                     nhead=4,
                                      num_layers=3)
 
         out: Tensor = lidar_encoder(lidar_batch, relative_goals)
