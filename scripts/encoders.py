@@ -1,8 +1,6 @@
-import time
-
 import torch
-from termcolor import cprint
 from torch import nn, Tensor
+from termcolor import cprint
 
 from dataset import CLIPDataModule
 
@@ -11,17 +9,17 @@ class PatchEmbedding(nn.Module):
     """ Convert a 2D image into 1D patches and embed them
     """
 
-    def __init__(self, img_size: int, input_channels: int, patch_size: int, embedding_size: int) -> \
-            None:
-        """ Initialize a PatchEmbedding Layer
+    def __init__(self, img_size: int, input_channels: int, patch_size: int,
+                 embedding_size: int) -> None:
+        """ Initialize a patch embedding layer
 
         Args:
-            img_size: size of the input images (assume square)
-            input_channels: number of input channels
-            patch_size: size of a 2d patch (assume square)
-            embedding_size: size of the embedding vector for a patch (input to the transformer)
+            img_size (int): img dimension (assume square)
+            input_channels (int): number of channels in the image
+            patch_size (int): patch dimension (assume square)
+            embedding_size (int): final size of a patch embedding vector
         """
-        super(PatchEmbedding, self).__init__()
+        super().__init__()
         self.input_channels = input_channels
         self.img_size = img_size
         self.patch_size = patch_size
@@ -36,10 +34,14 @@ class PatchEmbedding(nn.Module):
                                         out_features=embedding_size)
 
     def forward(self, lidar_batch: Tensor) -> Tensor:
-        """ Split a batch of images into patches and linearly embed each patch
+        """ split each image in batch into patches and linearly embed the patches
 
-        :param lidar_batch: input tensor (batch_size, channels, img_height, img_width)
-        :return: a batch of patch embeddings (batch_size, num_patches, embedding_size)
+        Args:
+            lidar_batch (Tensor): batch of lidar images
+                (batch_size, num_channels, img_size, img_size)
+
+        Returns:
+            Tensor: lidar patches (batch_size, num_patches, embedding_size)
         """
         # sanity checks
         assert len(lidar_batch.shape) == 4
@@ -69,15 +71,20 @@ class LidarEncoder(nn.Module):
     def __init__(self, img_size: int, input_channels: int, patch_size: int,
                  embedding_size: int, nhead: int, dropout: float,
                  activation: str, num_layers: int, output_dim: int) -> None:
-        """ Create a LidarEncoder
+        """ Initialize a vision transformer to encode a batch of lidar images
 
-        :param img_size: size of the input images (assume square)
-        :param input_channels: number of input channels (1 for grayscale, 3 for RGB)
-        :param patch_size: size of a 2D patch (assume square)
-        :param embedding_size: size of the embedding for a patch (input to the transformer)
-        :param output_dim: size of the output feature
+        Args:
+            img_size (int): img dimension (assume square)
+            input_channels (int): number of channels in the image
+            patch_size (int): patch dimension (assume square)
+            embedding_size (int): final size of a patch embedding vector
+            nhead (int): number of self-attention heads per attention layer
+            dropout (float): dropout for transformer layer mlp
+            activation (str): activation function for transformer mlp
+            num_layers (int): number of encoder layers in the encoder
+            output_dim (int): final feature dimension
         """
-        super(LidarEncoder, self).__init__()
+        super().__init__()
         self.patch_embed = PatchEmbedding(img_size=img_size,
                                           input_channels=input_channels,
                                           patch_size=patch_size,
@@ -98,6 +105,7 @@ class LidarEncoder(nn.Module):
                                                    nhead=nhead,
                                                    dropout=dropout,
                                                    activation=activation,
+                                                   layer_norm_eps=1e-6,
                                                    batch_first=True)
 
         self.layer_norm = nn.LayerNorm(embedding_size, eps=1e-6)
@@ -110,20 +118,19 @@ class LidarEncoder(nn.Module):
                                       nn.ReLU(),
                                       nn.Linear(output_dim, output_dim))
 
-    def forward(self, lidar_patches: Tensor, goals: Tensor) -> Tensor:
-        """ pass batch of images and goals and return a feature vector
+    def forward(self, lidar: Tensor, goals: Tensor) -> Tensor:
+        """ pass a batch of lidar images and goal points through the lidar encoder
 
         Args:
-            lidar_patches: batch of lidar images (batch_size, num_patches, embedding size)
-            goals: batch of goals (batch_size, 2)
+            lidar (Tensor): batch of lidar images (batch_size, num_channels, img_size, img_size)
+            goals (Tensor): batch of goals (batch_size, 2)
 
         Returns:
-            feature vector of size (batch_size, output_dim)
-
+            Tensor: encoder feature vector (batch_size, output_dim)
         """
-        batch_size = lidar_patches.shape[0]
+        batch_size = lidar.shape[0]
         # turn batch of images into embeddings
-        out = self.patch_embed(lidar_patches)
+        out = self.patch_embed(lidar)
         # expand cls token from 1 batch
         cls_token = self.cls_token.expand(batch_size, -1, -1)
         # concatenate cls token to beginning of patch embeddings
@@ -147,96 +154,93 @@ class JoyStickEncoder(nn.Module):
     """ MLP used to generate feature vectors for joystick input
     """
 
-    def __init__(self, input_dim, output_dim, dropout) -> None:
-        super(JoyStickEncoder, self).__init__()
-        input_dim *= 3
+    def __init__(self, joy_len, output_dim, dropout) -> None:
+        """ Initialize an mlp network to encode joystick data
+
+        Args:
+            joy_len (_type_): len of each joystick sequence
+            output_dim (_type_): final feature dimenstion
+            dropout (_type_): probability of dropping a neuron in dropout layer
+        """
+        super().__init__()
+        joy_len *= 3
         # two linear transformations
-        self.fc1 = nn.Linear(input_dim, input_dim)
-        self.fc2 = nn.Linear(input_dim, output_dim)
+        self.fc1 = nn.Linear(joy_len, joy_len)
+        self.fc2 = nn.Linear(joy_len, output_dim)
 
         # activation, dropout, batch normalize
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=dropout)
-        self.batch_norm = nn.BatchNorm1d(input_dim)
+        self.batch_norm = nn.BatchNorm1d(joy_len)
 
-    def forward(self, x: Tensor) -> Tensor:
-        x = x.flatten(1)
+    def forward(self, joystick_batch: Tensor) -> Tensor:
+        """ pass a batch of joystick data through the network
+
+        Args:
+            x (Tensor): batch of joystick data (batch_size, joy_len, 3)
+
+        Returns:
+            Tensor: feature vectors (batch_size, output_dim)
+        """
+        out = joystick_batch.flatten(1)
 
         # Input to hidden layer
-        x = self.batch_norm(x)
-        x = self.fc1(x)
-        x = self.dropout(x)
-        x = self.relu(x)
+        out = self.batch_norm(out)
+        out = self.fc1(out)
+        out = self.dropout(out)
+        out = self.relu(out)
 
         # hidden layer to output
-        x = self.batch_norm(x)
-        x = self.fc2(x)
-        x = self.dropout(x)
-        x = self.relu(x)
-        return x
+        out = self.batch_norm(out)
+        out = self.fc2(out)
+        out = self.dropout(out)
+        out = self.relu(out)
+        return out
 
 
 def main():
-    with torch.no_grad():
-        data_path = './data'
-        dm = CLIPDataModule(data_dir=data_path,
-                            batch_size=256,
-                            num_workers=2,
-                            future_joy_len=500,
-                            verbose=True)
-        dm.setup()
+    # Testing forward pass with a batch from the dataloader
 
-        cprint('creating trainloader...\n', 'green')
-        # get a random batch from training set
-        trainloader = dm.train_dataloader()
-        train_iter = iter(trainloader)
-        batch = next(train_iter)
-        cprint('done creating trainloader\n', 'green')
+    # create datamodule
+    dm = CLIPDataModule(data_path='./data',
+                        batch_size=64,
+                        num_workers=2,
+                        verbose=True)
 
-        output_size = 512
-        cprint(f'output_size: {output_size}\n', 'cyan', attrs=['bold'])
+    dm.setup()
 
-        # pass lidar data through encoder
-        start = time.time()
-        lidar_batch = batch[0]
-        relative_goals = batch[2]
-        print(f'lidar_batch max: {torch.max(lidar_batch):.2f}')
-        print(f'lidar_batch min: {torch.min(lidar_batch):.2f}')
-        cprint(f'lidar_batch shape: {lidar_batch.shape}', 'green')
-        img_size = lidar_batch.shape[2]
-        input_channels = lidar_batch.shape[1]
-        lidar_encoder = LidarEncoder(img_size=img_size,
-                                     input_channels=input_channels,
-                                     output_dim=output_size,
-                                     nhead=4,
-                                     num_layers=3)
+    # create encoders
+    lidar_encoder = LidarEncoder(img_size=400,
+                                 input_channels=5,
+                                 patch_size=16,
+                                 embedding_size=128,
+                                 nhead=1,
+                                 dropout=0.,
+                                 activation='gelu',
+                                 num_layers=3,
+                                 output_dim=128)
+    joystick_encoder = JoyStickEncoder(joy_len=300, output_dim=128, dropout=0.)
 
-        out: Tensor = lidar_encoder(lidar_batch, relative_goals)
-        out = out / out.norm(dim=1, keepdim=True)
-        print(out.shape)
-        print(f'lidar out max: {torch.max(out):.2f}')
-        print(f'lidar out min: {torch.min(out):.2f}')
-        cprint(f'elapsed time: {time.time() - start:.2f} s\n',
-               'green',
-               attrs=['bold'])
+    # load a batch from the training set
+    batch = next(iter(dm.train_dataloader()))
+    lidar, joystick, goal = batch
 
-        # pass joystick data through encoder
-        start = time.time()
-        joy_batch = batch[1]
-        print(f'joystick batch max: {torch.max(joy_batch):.2f}')
-        print(f'joystick batch min: {torch.min(joy_batch):.2f}')
-        cprint(f'joy_batch shape: {joy_batch.shape}', 'green')
-        input_dim = joy_batch.shape[1]
-        joystick_encoder = JoyStickEncoder(input_dim=input_dim,
-                                           output_dim=output_size)
-        joy_out = joystick_encoder(joy_batch)
-        joy_out = joy_out / joy_out.norm(dim=1, keepdim=True)
-        print(joy_out.shape)
-        print(f'joystick out max: {torch.max(joy_out):.2f}')
-        print(f'joystick out min: {torch.min(joy_out):.2f}')
-        cprint(f'elapsed time: {time.time() - start:.2f} s',
-               'green',
-               attrs=['bold'])
+    # print batch shapes
+    print('')
+    cprint('batch shapes\t\t', 'white', attrs=['bold'])
+    print('lidar:\t\t', lidar.shape)
+    print('joystick:\t', joystick.shape)
+    print('goal:\t\t', goal.shape)
+    print('')
+
+    # pass batch through encoders
+    lidar_feature = lidar_encoder.forward(lidar, goal)
+    joy_feature = joystick_encoder.forward(joystick)
+
+    # print feature shape information
+    cprint('feature shapes', 'white', attrs=['bold'])
+    print('lidar_feature:\t\t', lidar_feature.shape)
+    print('joystick_feature:\t', joy_feature.shape)
 
 
 if __name__ == '__main__':

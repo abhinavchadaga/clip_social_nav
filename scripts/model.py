@@ -66,7 +66,7 @@ class CLIPSocialNavModel(pl.LightningModule):
                                           num_layers=le_num_layers,
                                           output_dim=output_dim)
 
-        self.joystick_encoder = JoyStickEncoder(input_dim=je_input_dim,
+        self.joystick_encoder = JoyStickEncoder(joy_len=je_input_dim,
                                                 output_dim=output_dim,
                                                 dropout=j_dropout)
 

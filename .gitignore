@@ -9,6 +9,7 @@ bin/
 lib/
 lib64
 share/
+etc/
 pyvenv.cfg
 models/
 lightning_logs/

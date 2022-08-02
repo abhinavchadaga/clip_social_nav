@@ -69,10 +69,10 @@ def get_stack(odom: list, lidar_img_dir: str,
     t_2_5[:, -1] *= -20
     t_3_5[:, -1] *= -20
     t_4_5[:, -1] *= -20
-    lidar_stack[0] = cv2.warpAffine(lidar_stack[0], t_1_5[:2, :], (401, 401))
-    lidar_stack[1] = cv2.warpAffine(lidar_stack[1], t_2_5[:2, :], (401, 401))
-    lidar_stack[2] = cv2.warpAffine(lidar_stack[2], t_3_5[:2, :], (401, 401))
-    lidar_stack[3] = cv2.warpAffine(lidar_stack[3], t_4_5[:2, :], (401, 401))
+    lidar_stack[0] = cv2.warpAffine(lidar_stack[0], t_1_5[:2, :], (400, 400))
+    lidar_stack[1] = cv2.warpAffine(lidar_stack[1], t_2_5[:2, :], (400, 400))
+    lidar_stack[2] = cv2.warpAffine(lidar_stack[2], t_3_5[:2, :], (400, 400))
+    lidar_stack[3] = cv2.warpAffine(lidar_stack[3], t_4_5[:2, :], (400, 400))
 
     # combine the 5 single-channel images into a single image of 5 channels
     lidar_stack = np.asarray(lidar_stack).astype(np.float32)

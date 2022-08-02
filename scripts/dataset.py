@@ -1,8 +1,8 @@
 import glob
 import os
 import pickle
-from typing import Optional, Tuple
 import random
+from typing import Optional, Tuple
 
 import numpy as np
 import pytorch_lightning as pl
@@ -16,7 +16,6 @@ from lidar_helper import get_stack, STACK_LEN
 class CLIPSet(Dataset):
     """ data from one rosbag
     """
-
     def __init__(self,
                  pickle_file_path: str,
                  ignore_first_n=30,
@@ -41,8 +40,9 @@ class CLIPSet(Dataset):
                 "Pickle file does not exist. Please process the pickle file first.."
             )
 
-        self.data = pickle.load(
-            open(pickle_file_path.replace('_data.pkl', '_final.pkl'), 'rb'))
+        with open(pickle_file_path.replace('_data.pkl', '_final.pkl'),
+                  'rb') as f:
+            self.data = pickle.load(f)
 
         # 3 dimensional matrix of future joystick values at each time index
         self.future_joy_data = self.data['future_joystick']
@@ -70,7 +70,7 @@ class CLIPSet(Dataset):
 
     def __getitem__(self,
                     index: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """ get a sample from the dataset at this index 
+        """ get a sample from the dataset at this index
 
         Args:
             index (int): sample from this index
@@ -112,7 +112,6 @@ class CLIPDataModule(pl.LightningDataModule):
 
     setup training, validation splits
     """
-
     def __init__(self,
                  data_path: str,
                  batch_size: int,
@@ -139,7 +138,7 @@ class CLIPDataModule(pl.LightningDataModule):
         super().__init__()
         self.data_dir = data_path
         if data_path is None or not os.path.exists(data_path):
-            raise ValueError("Make sure to pass in a valid data directory")\
+            raise ValueError("Make sure to pass in a valid data directory")
 
         self.joy_len = joy_len
         self.dataset = None
