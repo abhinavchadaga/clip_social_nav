@@ -7,7 +7,8 @@ data_bak/
 .vscode/
 bin/
 lib/
-share/
 lib64/
+share/
+pyvenv.cfg
 models/
 lightning_logs/
