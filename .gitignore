@@ -5,11 +5,7 @@ data_bak/
 .DS_Store
 .idea/
 .vscode/
-bin/
-lib/
-lib64
-share/
+.venv/
 etc/
-pyvenv.cfg
 models/
 lightning_logs/

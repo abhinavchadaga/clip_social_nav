@@ -83,12 +83,6 @@ def get_stack(odom: list, lidar_img_dir: str,
 
 def visualize_lidar_stack(lidar_stack: np.ndarray,
                           file_names: np.ndarray) -> None:
-    """
-
-    :param lidar_stack:
-    :param file_names:
-    :return:
-    """
     file_names = [f'{n}.png' for n in file_names]
     rows, cols = 1, 5
     plt.figure(figsize=(25, 25))
@@ -97,3 +91,13 @@ def visualize_lidar_stack(lidar_stack: np.ndarray,
         plt.title(f'{title}, index: {i}')
         plt.imshow(img, cmap='gray')
     plt.show()
+
+
+def visualize_goal(lidar_frame: np.ndarray, goal):
+    # display the stuff
+    lidar_frame = cv2.cvtColor(lidar_frame, cv2.COLOR_GRAY2BGR)
+    t_f_pixels = [int(goal[0] / 0.05) + 200, int(-goal[1] / 0.05) + 200]
+    lidar_frame = cv2.circle(lidar_frame, (t_f_pixels[0], t_f_pixels[1]), 5,
+                             (255, 0, 0), -1)
+
+    return lidar_frame

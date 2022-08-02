@@ -12,9 +12,11 @@ from encoders import LidarEncoder, JoyStickEncoder
 
 
 class CLIPLoss(pl.LightningModule):
+    """ Loss function for model, from OpenAI's CLIP paper
+    """
 
     def __init__(self, temperature=0.7):
-        super(CLIPLoss, self).__init__()
+        super().__init__()
         self.logit_scale = nn.Parameter(
             torch.ones([]) * np.log(1 / temperature))
         self.cross_entropy = nn.CrossEntropyLoss()
@@ -54,7 +56,7 @@ class CLIPSocialNavModel(pl.LightningModule):
                  lr=3e-5,
                  weight_decay=1e-5,
                  temperature=0.7) -> None:
-        super(CLIPSocialNavModel, self).__init__()
+        super().__init__()
         # create encoders
         self.lidar_encoder = LidarEncoder(img_size=img_size,
                                           input_channels=input_channels,
@@ -109,7 +111,7 @@ class CLIPSocialNavModel(pl.LightningModule):
                                                                   factor=0.5)
         return {
             'optimizer': optimizer,
-            # 'lr_scheduler': lr_scheduler,
+            'lr_scheduler': lr_scheduler,
             'monitor': 'validation_loss'
         }
 
@@ -131,27 +133,3 @@ class CLIPSocialNavModel(pl.LightningModule):
         loss = self.clip_loss(lidar_features, joystick_features)
         self.log('validation_loss', loss, prog_bar=True, logger=True)
         return loss
-
-
-def main():
-    # test one pass
-    dm = CLIPDataModule(data_dir='./data',
-                        batch_size=128,
-                        num_workers=8,
-                        future_joy_len=500,
-                        verbose=True)
-    dm.setup()
-    batch = next(iter(dm.train_dataloader()))
-    lidar, joystick, goals = batch
-    print(lidar.shape)
-    print(joystick.shape)
-    print(goals.shape)
-    model = CLIPSocialNavModel(future_joy_len=joystick.shape[1])
-    start = time.time()
-    out = model.forward(*batch)
-    print(f'elapsed time: {time.time() - start:.2f} s')
-    print('success')
-
-
-if __name__ == '__main__':
-    main()

@@ -10,12 +10,13 @@ from termcolor import cprint
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from tqdm.auto import tqdm
 
-from lidar_helper import get_stack, STACK_LEN
+from utils import get_stack, STACK_LEN
 
 
 class CLIPSet(Dataset):
     """ data from one rosbag
     """
+
     def __init__(self,
                  pickle_file_path: str,
                  ignore_first_n=30,
@@ -53,7 +54,7 @@ class CLIPSet(Dataset):
         self.lidar_img_paths = os.listdir(self.lidar_dir)
 
         # set ignore_first frame to be at least 30
-        self.ignore_first = ignore_first_n if ignore_first_n > 30 else 30
+        self.ignore_first_n = ignore_first_n if ignore_first_n > 30 else 30
 
         # toggle visualization for bev lidar images
         self.include_lidar_file_names = include_lidar_file_names
@@ -66,7 +67,7 @@ class CLIPSet(Dataset):
         Returns:
             int: number of samples in the dataset
         """
-        return len(self.lidar_img_paths) - self.ignore_first - STACK_LEN
+        return len(self.lidar_img_paths) - self.ignore_first_n - STACK_LEN
 
     def __getitem__(self,
                     index: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -78,9 +79,9 @@ class CLIPSet(Dataset):
         Returns:
             Tuple[np.ndarray, np.ndarray, np.ndarray]: lidar_stack, joystick_data, relative_goal
         """
-        # skip the ignore_first frames, and offset by STACK_LEN
-        # so that no ignore_first frames are used in any lidar_stack
-        index = self.ignore_first + STACK_LEN + index
+        # skip the ignore_first_n frames, and offset by STACK_LEN
+        # so that no ignore_first_n frames are used in any lidar_stack
+        index = self.ignore_first_n + STACK_LEN + index
 
         # get lidar stack
         lidar_stack = get_stack(odom=self.data['odom'],
@@ -98,13 +99,10 @@ class CLIPSet(Dataset):
         joystick_data = joystick_data[:self.joy_pred_len, :]
 
         # get 10m goal relative to the current position of the robot
-        current_traj = self.data['human_expert_odom'][index]
-        robot_x, robot_y = current_traj[0][0], current_traj[0][1]
-        wf_goal_x, wf_goal_y = current_traj[-1][0], current_traj[-1][1]
-        rel_goal_x, rel_goal_y = wf_goal_x - robot_x, wf_goal_y - robot_y
-        relative_goal = np.array([rel_goal_x, rel_goal_y], dtype=np.float32)
+        ten_meter_goal = self.data['local_goal_human_odom'][index][-1]
+        ten_meter_goal = np.asarray(ten_meter_goal, dtype=np.float32)
 
-        return lidar_stack, joystick_data, relative_goal
+        return lidar_stack, joystick_data, ten_meter_goal
 
 
 class CLIPDataModule(pl.LightningDataModule):
@@ -112,6 +110,7 @@ class CLIPDataModule(pl.LightningDataModule):
 
     setup training, validation splits
     """
+
     def __init__(self,
                  data_path: str,
                  batch_size: int,
