@@ -5,5 +5,9 @@ data_bak/
 .DS_Store
 .idea/
 .vscode/
+bin/
+lib/
+share/
+lib64/
 models/
 lightning_logs/
