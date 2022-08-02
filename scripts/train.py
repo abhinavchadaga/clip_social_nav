@@ -1,5 +1,4 @@
 from datetime import datetime
-from gc import callbacks
 
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
@@ -9,47 +8,48 @@ import tensorboard as tb
 
 from dataset import CLIPDataModule
 from model import CLIPSocialNavModel
+from encoders import JoyStickEncoder, LidarEncoder
 
 # lidar encoder parameters
-patch_size = 16
-embedding_size = 128
-le_msa_heads = 1
-le_layers = 3
+PATCH_SIZE = 16
+EMBEDDING_SIZE = 128
+NHEAD = 1
+LE_DROPOUT = 0.1
+NUM_LAYERS = 3
 
 # joystick encoder parameters
-future_joy_len = 300
-dropout = 0.0
-
-# both encoders
-output_dim = 128
+JOY_LEN = 300
+DROPOUT = 0.1
 
 # model parameters
-max_epochs = 100
-output_dim = 128
-temperature = 0.7
+OUTPUT_DIM = 128
+TEMPERATURE = 0.07
 
 # hyperparameters
-batch_size = 128
-learning_rate = 3e-5
-weight_decay = 1e-5
-feature_size = 100
+BATCH_SIZE = 128
+MAX_EPOCHS = 100
+LEARNING_RATE = 3e-5
+WEIGHT_DECAY = 1e-5
+FEATURE_SIZE = 100
+PIN_MEMORY = False
 
 # get data
-dm = CLIPDataModule(data_dir='./data',
-                    batch_size=batch_size,
-                    future_joy_len=future_joy_len,
+dm = CLIPDataModule(data_path='./data',
+                    batch_size=64,
                     num_workers=10,
+                    pin_memory=PIN_MEMORY,
                     verbose=True)
 
 # initialize model
-model = CLIPSocialNavModel(patch_size=patch_size,
-                           embedding_size=embedding_size,
-                           nhead=le_msa_heads,
-                           le_num_layers=le_layers,
-                           output_dim=output_dim,
-                           future_joy_len=future_joy_len,
-                           j_dropout=dropout,
-                           temperature=temperature)
+model = CLIPSocialNavModel(
+    lidar_encoder=LidarEncoder(patch_size=PATCH_SIZE,
+                               embedding_size=EMBEDDING_SIZE,
+                               nhead=NHEAD,
+                               dropout=LE_DROPOUT,
+                               num_layers=NUM_LAYERS,
+                               output_dim=OUTPUT_DIM),
+    joystick_encoder=JoyStickEncoder(joy_len=JOY_LEN, output_dim=OUTPUT_DIM),
+    temperature=TEMPERATURE)
 
 early_stopping_cb = EarlyStopping(monitor='validation_loss',
                                   mode='min',
@@ -63,10 +63,12 @@ model_checkpoint_cb = ModelCheckpoint(
     mode='min')
 
 trainer = pl.Trainer(
-    gpus=2,
+    accelerator='gpu',
+    devices=2,
     logger=pl_loggers.TensorBoardLogger("lightning_logs/clip_social_nav/"),
     callbacks=[early_stopping_cb, model_checkpoint_cb],
-    strategy='dp',
-    max_epochs=max_epochs)
+    precision=16,
+    strategy='ddp',
+    max_epochs=MAX_EPOCHS)
 
 trainer.fit(model, dm)

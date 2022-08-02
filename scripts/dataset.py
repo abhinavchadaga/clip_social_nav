@@ -118,6 +118,7 @@ class CLIPDataModule(pl.LightningDataModule):
                  ignore_first_n=30,
                  joy_len=300,
                  include_lidar_file_names=False,
+                 pin_memory=False,
                  verbose=False) -> None:
         """ Initialize a pytorch lightning data module from a directory of processed rosbags
 
@@ -131,7 +132,10 @@ class CLIPDataModule(pl.LightningDataModule):
                 Defaults to 300.
             include_lidar_file_names (bool, optional): return file names with lidar imgs.
                 Defaults to False.
-            verbose (bool, optional): print datamodule information . Defaults to False.
+            pin_memory (bool, optional): toggle pin memory for pytorch dataloaders.
+                Defaults to False.
+            verbose (bool, optional): print datamodule information. 
+                Defaults to False.
         """
 
         super().__init__()
@@ -146,6 +150,7 @@ class CLIPDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.ignore_first_n = ignore_first_n
+        self.pin_memory = pin_memory
 
         # diagnostics
         self.include_lidar_file_names = include_lidar_file_names
@@ -230,6 +235,7 @@ class CLIPDataModule(pl.LightningDataModule):
                           batch_size=self.batch_size,
                           shuffle=True,
                           num_workers=self.num_workers,
+                          pin_memory=self.pin_memory,
                           drop_last=True)
 
     def val_dataloader(self) -> DataLoader:
@@ -242,4 +248,5 @@ class CLIPDataModule(pl.LightningDataModule):
                           batch_size=self.batch_size,
                           shuffle=False,
                           num_workers=self.num_workers,
+                          pin_memory=self.pin_memory,
                           drop_last=True)

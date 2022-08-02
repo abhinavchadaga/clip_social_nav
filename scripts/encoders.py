@@ -68,21 +68,37 @@ class LidarEncoder(nn.Module):
     """ Vision Transformer used to generate lidar feature vector
     """
 
-    def __init__(self, img_size: int, input_channels: int, patch_size: int,
-                 embedding_size: int, nhead: int, dropout: float,
-                 activation: str, num_layers: int, output_dim: int) -> None:
+    def __init__(self,
+                 img_size=400,
+                 input_channels=5,
+                 patch_size=16,
+                 embedding_size=128,
+                 nhead=1,
+                 dropout=0.1,
+                 activation='gelu',
+                 num_layers=3,
+                 output_dim=128) -> None:
         """ Initialize a vision transformer to encode a batch of lidar images
 
         Args:
-            img_size (int): img dimension (assume square)
-            input_channels (int): number of channels in the image
-            patch_size (int): patch dimension (assume square)
-            embedding_size (int): final size of a patch embedding vector
-            nhead (int): number of self-attention heads per attention layer
-            dropout (float): dropout for transformer layer mlp
-            activation (str): activation function for transformer mlp
-            num_layers (int): number of encoder layers in the encoder
-            output_dim (int): final feature dimension
+            img_size (int, optional): img dimension (assume square).
+                Defaults to 400.
+            input_channels (int, optional): number of channels in the image.
+                Defaults to 5.
+            patch_size (int, optional): patch dimension (assume square).
+                Defaults to 16.
+            embedding_size (int, optional): final size of a patch embedding vector.
+                Defaults to 128.
+            nhead (int, optional): number of self-attention heads per attention layer.
+                Defaults to 1.
+            dropout (_type_, optional): dropout for transformer layer mlp.
+                Defaults to 0.1
+            activation (str, optional): activation function for transformer mlp.
+                Defaults to 'gelu'.
+            num_layers (int, optional): number of encoder layers in the encoder.
+                Defaults to 3.
+            output_dim (int, optional): final feature dimension.
+                Defaults to 128.
         """
         super().__init__()
         self.patch_embed = PatchEmbedding(img_size=img_size,
@@ -154,13 +170,13 @@ class JoyStickEncoder(nn.Module):
     """ MLP used to generate feature vectors for joystick input
     """
 
-    def __init__(self, joy_len, output_dim, dropout) -> None:
+    def __init__(self, joy_len=300, output_dim=128, dropout=0.1) -> None:
         """ Initialize an mlp network to encode joystick data
 
         Args:
-            joy_len (_type_): len of each joystick sequence
-            output_dim (_type_): final feature dimenstion
-            dropout (_type_): probability of dropping a neuron in dropout layer
+            joy_len (_type_): len of each joystick sequence. Defaults to 300
+            output_dim (_type_): final feature dimenstion. Defaults to 128
+            dropout (_type_): probability of dropping a neuron in dropout layer. Defaults to 0.1
         """
         super().__init__()
         joy_len *= 3
@@ -210,16 +226,8 @@ def main():
     dm.setup()
 
     # create encoders
-    lidar_encoder = LidarEncoder(img_size=400,
-                                 input_channels=5,
-                                 patch_size=16,
-                                 embedding_size=128,
-                                 nhead=1,
-                                 dropout=0.,
-                                 activation='gelu',
-                                 num_layers=3,
-                                 output_dim=128)
-    joystick_encoder = JoyStickEncoder(joy_len=300, output_dim=128, dropout=0.)
+    lidar_encoder = LidarEncoder()
+    joystick_encoder = JoyStickEncoder()
 
     # load a batch from the training set
     batch = next(iter(dm.train_dataloader()))

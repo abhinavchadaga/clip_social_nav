@@ -5,7 +5,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from torch import nn, Tensor
-from torch.nn import functional as F
+from termcolor import cprint
 
 from dataset import CLIPDataModule
 from encoders import LidarEncoder, JoyStickEncoder
@@ -15,13 +15,28 @@ class CLIPLoss(pl.LightningModule):
     """ Loss function for model, from OpenAI's CLIP paper
     """
 
-    def __init__(self, temperature=0.7):
+    def __init__(self, temperature=0.07) -> None:
+        """ Initialize a pytorch lightning module to learn a logit scale
+
+        Args:
+            temperature (float, optional): parameter from OpenAI clip paper.
+                Used to scale the logits. Defaults to 0.7.
+        """
         super().__init__()
         self.logit_scale = nn.Parameter(
             torch.ones([]) * np.log(1 / temperature))
         self.cross_entropy = nn.CrossEntropyLoss()
 
-    def forward(self, lidar_features, joystick_features):
+    def forward(self, lidar_features, joystick_features) -> float:
+        """ calculate the loss given a set of lidar feature vectors and joystick feature vectors
+
+        Args:
+            lidar_features (_type_): output of lidar_encoder (batch_size, output_dim)
+            joystick_features (_type_): output of joystick encoder (batch_size, output_dim)
+
+        Returns:
+            float: total loss
+        """
         assert lidar_features.shape == joystick_features.shape
 
         # cosine similarity as logits
@@ -42,36 +57,15 @@ class CLIPSocialNavModel(pl.LightningModule):
     """
 
     def __init__(self,
-                 img_size=401,
-                 input_channels=5,
-                 patch_size=16,
-                 embedding_size=128,
-                 nhead=8,
-                 le_dropout=0.1,
-                 le_activation='gelu',
-                 le_num_layers=6,
-                 je_input_dim=300,
-                 j_dropout=0.0,
-                 output_dim=128,
+                 lidar_encoder,
+                 joystick_encoder,
+                 temperature=0.07,
                  lr=3e-5,
-                 weight_decay=1e-5,
-                 temperature=0.7) -> None:
+                 weight_decay=1e-5) -> None:
         super().__init__()
         # create encoders
-        self.lidar_encoder = LidarEncoder(img_size=img_size,
-                                          input_channels=input_channels,
-                                          patch_size=patch_size,
-                                          embedding_size=embedding_size,
-                                          nhead=nhead,
-                                          dropout=le_dropout,
-                                          activation=le_activation,
-                                          num_layers=le_num_layers,
-                                          output_dim=output_dim)
-
-        self.joystick_encoder = JoyStickEncoder(joy_len=je_input_dim,
-                                                output_dim=output_dim,
-                                                dropout=j_dropout)
-
+        self.lidar_encoder = lidar_encoder
+        self.joystick_encoder = joystick_encoder
         self.clip_loss = CLIPLoss(temperature=temperature)
 
         # optimizer parameters
@@ -79,7 +73,7 @@ class CLIPSocialNavModel(pl.LightningModule):
         self.weight_decay = weight_decay
 
     def forward(self, lidar: Tensor, joystick: Tensor,
-                rel_goals: Tensor) -> Tuple[Tensor, Tensor]:
+                goals: Tensor) -> Tuple[Tensor, Tensor]:
         """ forward pass through the CLIP model, sourced from OpenAI CLIP model
 
         :param lidar: batch of lidar img stacks (batch_size, output_dim)
@@ -87,7 +81,7 @@ class CLIPSocialNavModel(pl.LightningModule):
         :return: concatenated tensor containing lidar and joystick features (batch_size * 2,
         output_size)
         """
-        lidar_features = self.lidar_encoder.forward(lidar, rel_goals)
+        lidar_features = self.lidar_encoder.forward(lidar, goals)
         joystick_features = self.joystick_encoder.forward(joystick)
 
         # L2 normalize features
@@ -101,7 +95,12 @@ class CLIPSocialNavModel(pl.LightningModule):
     def configure_optimizers(self):
         """ Setup optimizer and learning rate scheduler
         """
-        optimizer = torch.optim.AdamW(params=self.parameters(),
+        # weight decay, ignore the biases
+        weights = [
+            param for name, param in self.named_parameters()
+            if 'bias' not in name
+        ]
+        optimizer = torch.optim.AdamW(params=weights,
                                       lr=self.learning_rate,
                                       weight_decay=self.weight_decay)
 
@@ -115,7 +114,7 @@ class CLIPSocialNavModel(pl.LightningModule):
             'monitor': 'validation_loss'
         }
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch):
         """ Forward pass and compute training loss for one step
         """
         lidar, joystick, goals = batch
@@ -126,10 +125,43 @@ class CLIPSocialNavModel(pl.LightningModule):
         self.log('training_loss', loss, prog_bar=True, logger=True)
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch):
         lidar, joystick, goals = batch
         lidar_features, joystick_features = self.forward(
             lidar, joystick, goals)
         loss = self.clip_loss(lidar_features, joystick_features)
         self.log('validation_loss', loss, prog_bar=True, logger=True)
         return loss
+
+
+def main():
+    # test training step
+    # create datamodule
+    dm = CLIPDataModule(data_path='./data',
+                        batch_size=64,
+                        num_workers=2,
+                        verbose=True)
+
+    dm.setup()
+
+    # load a batch from the training set
+    batch = next(iter(dm.train_dataloader()))
+    lidar, joystick, goals = batch
+
+    # create model
+    model = CLIPSocialNavModel(lidar_encoder=LidarEncoder(),
+                               joystick_encoder=JoyStickEncoder(),
+                               lr=3e-5,
+                               weight_decay=1e-5)
+    clip_loss = CLIPLoss()
+    start = time.time()
+    lidar_features, joystick_features = model(lidar, joystick, goals)
+    loss = clip_loss(lidar_features, joystick_features)
+    cprint(f'loss: {loss:.2f}', 'white', attrs=['bold'])
+    cprint(f'success! 1 step in {time.time() - start:.2f} seconds',
+           'green',
+           attrs=['bold'])
+
+
+if __name__ == "__main__":
+    main()
