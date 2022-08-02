@@ -14,6 +14,8 @@ from lidar_helper import get_stack, STACK_LEN
 
 
 class CLIPSet(Dataset):
+    """ data from one rosbag
+    """
 
     def __init__(self,
                  pickle_file_path: str,
@@ -106,6 +108,10 @@ class CLIPSet(Dataset):
 
 
 class CLIPDataModule(pl.LightningDataModule):
+    """ Data wrapper for entire dataset
+
+    setup training, validation splits
+    """
 
     def __init__(self,
                  data_path: str,
@@ -130,7 +136,7 @@ class CLIPDataModule(pl.LightningDataModule):
             verbose (bool, optional): print datamodule information . Defaults to False.
         """
 
-        super(CLIPDataModule, self).__init__()
+        super().__init__()
         self.data_dir = data_path
         if data_path is None or not os.path.exists(data_path):
             raise ValueError("Make sure to pass in a valid data directory")\
