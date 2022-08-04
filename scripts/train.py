@@ -1,6 +1,7 @@
 from datetime import datetime
 from matplotlib.animation import ImageMagickBase
 
+import torch
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
@@ -9,10 +10,9 @@ from pytorch_lightning.callbacks.stochastic_weight_avg import StochasticWeightAv
 import tensorboard as tb
 
 from dataset import CLIPDataModule
-from model import CLIPSocialNavModel
-from encoders import JoyStickEncoder, LidarEncoder
+from model import CLIPSocialNavModel, VisionTransformer, JoyStickEncoder
+from my_vision_transformer import LidarEncoder
 from vit_lucidrains import ViT
-from vision_transformer import DINOEncoder
 
 # lidar encoder parameters
 IMAGE_SIZE = 100
@@ -38,6 +38,8 @@ MAX_EPOCHS = 32
 LEARNING_RATE = 5e-4
 WEIGHT_DECAY = 0.2
 PIN_MEMORY = True
+WARMUP = 2000
+MAX_ITERS = 1000
 
 # get data
 dm = CLIPDataModule(data_path='./data',
@@ -47,44 +49,24 @@ dm = CLIPDataModule(data_path='./data',
                     pin_memory=PIN_MEMORY,
                     verbose=True)
 
-vit = ViT(image_size=IMAGE_SIZE,
-          channels=INPUT_CHANNELS,
-          patch_size=PATCH_SIZE,
-          num_classes=OUTPUT_DIM,
-          embedding_size=EMBEDDING_SIZE,
-          depth=NUM_LAYERS,
-          heads=NHEAD,
-          mlp_dim=DIM_FEEDFORWARD,
-          dropout=0.2,
-          emb_dropout=0.2,
-          pool='cls')
-
-dino_encoder = DINOEncoder(img_size=[IMAGE_SIZE],
-                           patch_size=PATCH_SIZE,
-                           in_chans=INPUT_CHANNELS,
-                           output_dim=OUTPUT_DIM,
-                           embed_dim=EMBEDDING_SIZE,
-                           depth=NUM_LAYERS,
-                           num_heads=NHEAD,
-                           attn_drop_rate=LE_DROPOUT,
-                           drop_rate=LE_DROPOUT)
-
-my_encoder = LidarEncoder(img_size=IMAGE_SIZE,
-                          input_channels=INPUT_CHANNELS,
-                          patch_size=PATCH_SIZE,
-                          embedding_size=EMBEDDING_SIZE,
-                          nhead=NHEAD,
-                          dim_feedforward=DIM_FEEDFORWARD,
-                          dropout=LE_DROPOUT,
-                          num_layers=NUM_LAYERS,
-                          output_dim=OUTPUT_DIM)
+vision_transformer = VisionTransformer(img_size=IMAGE_SIZE,
+                                       patch_size=PATCH_SIZE,
+                                       input_channels=INPUT_CHANNELS,
+                                       output_dim=OUTPUT_DIM,
+                                       embed_dim=EMBEDDING_SIZE,
+                                       depth=NUM_LAYERS,
+                                       num_heads=NHEAD,
+                                       attn_drop_rate=LE_DROPOUT,
+                                       drop_rate=LE_DROPOUT)
 # initialize model
-model = CLIPSocialNavModel(lidar_encoder=my_encoder,
+model = CLIPSocialNavModel(lidar_encoder=vision_transformer,
                            joystick_encoder=JoyStickEncoder(
-                               joy_len=JOY_LEN,
-                               output_dim=OUTPUT_DIM,
-                               dropout=DROPOUT),
-                           temperature=TEMPERATURE)
+                               joy_len=JOY_LEN, output_dim=OUTPUT_DIM),
+                           temperature=TEMPERATURE,
+                           lr=LEARNING_RATE,
+                           weight_decay=WEIGHT_DECAY,
+                           warmup=WARMUP,
+                           max_iters=MAX_ITERS)
 
 early_stopping_cb = EarlyStopping(monitor='validation_loss',
                                   mode='min',
@@ -114,3 +96,10 @@ trainer = pl.Trainer(
     log_every_n_steps=20)
 
 trainer.fit(model, dm)
+
+# save model
+torch.save(
+    model.state_dict(), 'models/clip_social_nav/' +
+    datetime.now().strftime("%d-%m-%Y-%H-%M-%S") + '.pt')
+
+print('Model has been trained and saved')
