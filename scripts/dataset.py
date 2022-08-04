@@ -10,6 +10,7 @@ from termcolor import cprint
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from tqdm.auto import tqdm
 
+
 from utils import get_stack, STACK_LEN
 
 
@@ -91,12 +92,17 @@ class CLIPSet(Dataset):
         if not self.include_lidar_file_names:
             lidar_stack = lidar_stack[0]
 
+        # # convert to mean_variance stack
+        # # (10, 100, 100)
+        # lidar_stack = transform_stack(lidar_stack)
+
         # get joystick data
         joystick_data = self.data['future_joystick'][index]
         # pad with zeros if the length of the joystick sample is not long enough
         diff = max(0, self.joy_pred_len - joystick_data.shape[0])
         joystick_data = np.pad(joystick_data, pad_width=((0, diff), (0, 0)))
         joystick_data = joystick_data[:self.joy_pred_len, :]
+        # joystick_data = np.delete(joystick_data, 1, axis=1)
 
         # get 10m goal relative to the current position of the robot
         ten_meter_goal = self.data['local_goal_human_odom'][index][-1]
@@ -159,6 +165,10 @@ class CLIPDataModule(pl.LightningDataModule):
         # load the pickle files
         self.pickle_file_paths = glob.glob(
             os.path.join(self.data_dir, '*_final.pkl'))
+        self.pickle_file_paths = sorted(self.pickle_file_paths,
+                                        key=lambda x: os.stat(x).st_size,
+                                        reverse=True)
+        # random.shuffle(self.pickle_file_paths)
 
     def setup(self, stage: Optional[str] = None) -> None:
         """ Setup training and validation splits
@@ -176,12 +186,11 @@ class CLIPDataModule(pl.LightningDataModule):
                 cprint(f'batch size: {self.batch_size}', 'cyan')
                 cprint(f'future joystick length: {self.joy_len}\n', 'cyan')
 
-            # shuffle pkl list for train validation split
-            random.shuffle(self.pickle_file_paths)
-            train_pkl = self.pickle_file_paths[:int(0.75 *
+            # setup train/val split
+            train_pkl = self.pickle_file_paths[:int(0.6 *
                                                     len(self.pickle_file_paths)
                                                     )]
-            val_pkl = self.pickle_file_paths[int(0.75 *
+            val_pkl = self.pickle_file_paths[int(0.6 *
                                                  len(self.pickle_file_paths)):]
 
             # load training pkl files

@@ -1,5 +1,7 @@
+from matplotlib.colors import Normalize
 import torch
 from torch import nn, Tensor
+from torch.nn import functional as F
 from termcolor import cprint
 
 from dataset import CLIPDataModule
@@ -73,11 +75,12 @@ class LidarEncoder(nn.Module):
                  input_channels=5,
                  patch_size=16,
                  embedding_size=128,
-                 nhead=1,
+                 dim_feedforward=2048,
+                 nhead=8,
                  dropout=0.1,
                  activation='gelu',
-                 num_layers=3,
-                 output_dim=128) -> None:
+                 num_layers=6,
+                 output_dim=100) -> None:
         """ Initialize a vision transformer to encode a batch of lidar images
 
         Args:
@@ -89,6 +92,8 @@ class LidarEncoder(nn.Module):
                 Defaults to 16.
             embedding_size (int, optional): final size of a patch embedding vector.
                 Defaults to 128.
+            dim_feedforward (int, optional): the dimension of the feedforward network model.
+                Defaults to 2048.
             nhead (int, optional): number of self-attention heads per attention layer.
                 Defaults to 1.
             dropout (_type_, optional): dropout for transformer layer mlp.
@@ -117,12 +122,14 @@ class LidarEncoder(nn.Module):
             torch.randn(1, 1 + self.patch_embed.num_patches, embedding_size))
 
         # transformer encoder
-        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_size,
-                                                   nhead=nhead,
-                                                   dropout=dropout,
-                                                   activation=activation,
-                                                   layer_norm_eps=1e-6,
-                                                   batch_first=True)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embedding_size,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            activation=activation,
+            layer_norm_eps=1e-6,
+            batch_first=True)
 
         self.layer_norm = nn.LayerNorm(embedding_size, eps=1e-6)
         self.encoder = nn.TransformerEncoder(encoder_layer=encoder_layer,
@@ -130,9 +137,9 @@ class LidarEncoder(nn.Module):
                                              norm=self.layer_norm)
 
         # MLP head, only uses the cls token
-        self.mlp_head = nn.Sequential(nn.Linear(embedding_size, output_dim),
-                                      nn.ReLU(),
-                                      nn.Linear(output_dim, output_dim))
+        self.mlp_head = MLPHead(input_dim=embedding_size,
+                                hidden_dim=embedding_size,
+                                output_dim=output_dim)
 
     def forward(self, lidar: Tensor, goals: Tensor) -> Tensor:
         """ pass a batch of lidar images and goal points through the lidar encoder
@@ -166,28 +173,46 @@ class LidarEncoder(nn.Module):
         return out
 
 
+class MLPHead(nn.Module):
+    """ MLP head for lidar vision transformer
+    """
+
+    def __init__(self, input_dim, hidden_dim, output_dim) -> None:
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        out = self.fc1(x)
+        out = self.relu(out)
+        out = self.fc2(out)
+        return out
+
+
 class JoyStickEncoder(nn.Module):
     """ MLP used to generate feature vectors for joystick input
     """
 
-    def __init__(self, joy_len=300, output_dim=128, dropout=0.1) -> None:
+    def __init__(self, joy_len=300, output_dim=100, dropout=0.1) -> None:
         """ Initialize an mlp network to encode joystick data
 
         Args:
-            joy_len (_type_): len of each joystick sequence. Defaults to 300
-            output_dim (_type_): final feature dimenstion. Defaults to 128
-            dropout (_type_): probability of dropping a neuron in dropout layer. Defaults to 0.1
+            joy_len (int): len of each joystick sequence. Defaults to 300
+            output_dim (int): final feature dimenstion. Defaults to 128
+            dropout (float): probability of dropping a neuron in dropout layer. Defaults to 0.1
         """
         super().__init__()
         joy_len *= 3
         # two linear transformations
-        self.fc1 = nn.Linear(joy_len, joy_len)
-        self.fc2 = nn.Linear(joy_len, output_dim)
+        self.fc1 = nn.Linear(joy_len, joy_len, bias=False)
+        self.fc2 = nn.Linear(joy_len, output_dim, bias=False)
+        self.fc3 = nn.Linear(output_dim, output_dim)
 
         # activation, dropout, batch normalize
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=dropout)
-        self.batch_norm = nn.BatchNorm1d(joy_len)
+        self.relu = nn.LeakyReLU()
+        self.batch_norm_1 = nn.BatchNorm1d(joy_len)
+        self.batch_norm_2 = nn.BatchNorm1d(output_dim)
 
     def forward(self, joystick_batch: Tensor) -> Tensor:
         """ pass a batch of joystick data through the network
@@ -201,55 +226,15 @@ class JoyStickEncoder(nn.Module):
         out = joystick_batch.flatten(1)
 
         # Input to hidden layer
-        out = self.batch_norm(out)
         out = self.fc1(out)
-        out = self.dropout(out)
+        out = self.batch_norm_1(out)
         out = self.relu(out)
 
-        # hidden layer to output
-        out = self.batch_norm(out)
+        # hidden1 to hidden2
         out = self.fc2(out)
-        out = self.dropout(out)
+        out = self.batch_norm_2(out)
         out = self.relu(out)
+
+        # hidden layer 2 to output
+        out = self.fc3(out)
         return out
-
-
-def main():
-    # Testing forward pass with a batch from the dataloader
-
-    # create datamodule
-    dm = CLIPDataModule(data_path='./data',
-                        batch_size=64,
-                        num_workers=2,
-                        verbose=True)
-
-    dm.setup()
-
-    # create encoders
-    lidar_encoder = LidarEncoder()
-    joystick_encoder = JoyStickEncoder()
-
-    # load a batch from the training set
-    batch = next(iter(dm.train_dataloader()))
-    lidar, joystick, goal = batch
-
-    # print batch shapes
-    print('')
-    cprint('batch shapes\t\t', 'white', attrs=['bold'])
-    print('lidar:\t\t', lidar.shape)
-    print('joystick:\t', joystick.shape)
-    print('goal:\t\t', goal.shape)
-    print('')
-
-    # pass batch through encoders
-    lidar_feature = lidar_encoder.forward(lidar, goal)
-    joy_feature = joystick_encoder.forward(joystick)
-
-    # print feature shape information
-    cprint('feature shapes', 'white', attrs=['bold'])
-    print('lidar_feature:\t\t', lidar_feature.shape)
-    print('joystick_feature:\t', joy_feature.shape)
-
-
-if __name__ == '__main__':
-    main()

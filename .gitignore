@@ -1,6 +1,7 @@
 __pycache__/
 data/
 data_bak/
+data_subset/
 .ipynb_checkpoints/
 .DS_Store
 .idea/
