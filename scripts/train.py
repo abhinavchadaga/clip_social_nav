@@ -12,17 +12,16 @@ import tensorboard as tb
 from dataset import CLIPDataModule
 from model import CLIPSocialNavModel, VisionTransformer, JoyStickEncoder
 from my_vision_transformer import LidarEncoder
-from vit_lucidrains import ViT
 
 # lidar encoder parameters
 IMAGE_SIZE = 100
 INPUT_CHANNELS = 10
 PATCH_SIZE = 4
 EMBEDDING_SIZE = 256
-NHEAD = 4
+NHEAD = 8
 DIM_FEEDFORWARD = 2048
 LE_DROPOUT = 0.1
-NUM_LAYERS = 2
+NUM_LAYERS = 4
 
 # joystick encoder parameters
 JOY_LEN = 300
@@ -33,8 +32,8 @@ OUTPUT_DIM = 100
 TEMPERATURE = 0.07
 
 # hyperparameters
-BATCH_SIZE = 1024
-MAX_EPOCHS = 32
+BATCH_SIZE = 128
+MAX_EPOCHS = 100
 LEARNING_RATE = 5e-4
 WEIGHT_DECAY = 0.2
 PIN_MEMORY = True
@@ -83,8 +82,6 @@ model_checkpoint_cb = ModelCheckpoint(
 
 trainer = pl.Trainer(
     accelerator='gpu',
-    strategy='dp',
-    devices=8,
     logger=pl_loggers.TensorBoardLogger("lightning_logs/clip_social_nav/"),
     callbacks=[model_checkpoint_cb, swa_cb],
     gradient_clip_val=1.0,

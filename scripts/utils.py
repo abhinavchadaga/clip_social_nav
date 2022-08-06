@@ -42,7 +42,7 @@ def get_stack(odom: list, lidar_img_dir: str,
     lidar_stack = []
     for x in range(i - STACK_LEN + 1, i + 1):
         img = Image.open(os.path.join(lidar_img_dir, f'{x}.png'))
-        img = np.asarray(img)
+        img = np.asarray(img, dtype=np.float32)
         lidar_stack.append(img)
 
     odom_stack = odom[i - STACK_LEN + 1:i + 1]
@@ -74,10 +74,10 @@ def get_stack(odom: list, lidar_img_dir: str,
     t_2_5[:, -1] *= -20
     t_3_5[:, -1] *= -20
     t_4_5[:, -1] *= -20
-    lidar_stack[0] = cv2.warpAffine(lidar_stack[0], t_1_5[:2, :], (400, 400))
-    lidar_stack[1] = cv2.warpAffine(lidar_stack[1], t_2_5[:2, :], (400, 400))
-    lidar_stack[2] = cv2.warpAffine(lidar_stack[2], t_3_5[:2, :], (400, 400))
-    lidar_stack[3] = cv2.warpAffine(lidar_stack[3], t_4_5[:2, :], (400, 400))
+    lidar_stack[0] = cv2.warpAffine(lidar_stack[0], t_1_5[:2, :], (401, 401))
+    lidar_stack[1] = cv2.warpAffine(lidar_stack[1], t_2_5[:2, :], (401, 401))
+    lidar_stack[2] = cv2.warpAffine(lidar_stack[2], t_3_5[:2, :], (401, 401))
+    lidar_stack[3] = cv2.warpAffine(lidar_stack[3], t_4_5[:2, :], (401, 401))
 
     # mean and variance of height
     # 5, 400, 400 -> 10, 100, 100

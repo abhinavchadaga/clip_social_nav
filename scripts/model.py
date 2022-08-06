@@ -8,16 +8,16 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 
 from my_vision_transformer import LidarEncoder
-from vit_lucidrains import ViT
 from utils import trunc_normal_
 
 
+# From timm and Facebook-DINO
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     if drop_prob == 0. or not training:
         return x
     keep_prob = 1 - drop_prob
-    shape = (x.shape[0], ) + (1, ) * (
-        x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    # work with diff dim tensors, not just 2D ConvNets
+    shape = (x.shape[0], ) + (1, ) * (x.ndim - 1)
     random_tensor = keep_prob + torch.rand(
         shape, dtype=x.dtype, device=x.device)
     random_tensor.floor_()  # binarize
@@ -38,13 +38,10 @@ class DropPath(nn.Module):
 
 
 class MLP(nn.Module):
+    """ Feedforward layer for Attention Block
+    """
 
-    def __init__(self,
-                 in_features,
-                 hidden_features=None,
-                 out_features=None,
-                 act_layer=nn.GELU,
-                 drop=0.):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
@@ -63,14 +60,10 @@ class MLP(nn.Module):
 
 
 class Attention(nn.Module):
+    """ Attention Layer
+    """
 
-    def __init__(self,
-                 dim,
-                 num_heads=8,
-                 qkv_bias=False,
-                 qk_scale=None,
-                 attn_drop=0.,
-                 proj_drop=0.):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -83,8 +76,8 @@ class Attention(nn.Module):
 
     def forward(self, x):
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads,
-                                  C // self.num_heads).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C //
+                                  self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -98,26 +91,15 @@ class Attention(nn.Module):
 
 
 class AttnBlock(nn.Module):
+    """ Module containing Attention, LayerNormalization, and a Feedforward Layer
+    """
 
-    def __init__(self,
-                 dim,
-                 num_heads,
-                 mlp_ratio=4.,
-                 qkv_bias=False,
-                 qk_scale=None,
-                 drop=0.,
-                 attn_drop=0.,
-                 drop_path=0.,
-                 act_layer=nn.GELU,
-                 norm_layer=nn.LayerNorm):
+    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0.,
+                 attn_drop=0., drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.norm1 = norm_layer(dim)
-        self.attn = Attention(dim,
-                              num_heads=num_heads,
-                              qkv_bias=qkv_bias,
-                              qk_scale=qk_scale,
-                              attn_drop=attn_drop,
-                              proj_drop=drop)
+        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias,
+                              qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
         self.drop_path = DropPath(
             drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -140,8 +122,7 @@ class PatchEmbed(nn.Module):
     """ Convert a 2D image into 1D patches and embed them
     """
 
-    def __init__(self, img_size: int, input_channels: int, patch_size: int, embed_dim: int) -> \
-            None:
+    def __init__(self, img_size: int, input_channels: int, patch_size: int, embed_dim: int) -> None:
         """ Initialize a PatchEmbedding Layer
         :param img_size: size of the input images (assume square)
         :param input_channels: number of input channels (1 for grayscale, 3 for RGB)
@@ -178,20 +159,9 @@ class PatchEmbed(nn.Module):
 class VisionTransformer(nn.Module):
     """ Vision Transformer """
 
-    def __init__(self,
-                 img_size=100,
-                 patch_size=4,
-                 input_channels=10,
-                 output_dim=512,
-                 embed_dim=768,
-                 depth=6,
-                 num_heads=8,
-                 mlp_ratio=4.,
-                 qkv_bias=False,
-                 qk_scale=None,
-                 drop_rate=0.,
-                 attn_drop_rate=0.,
-                 drop_path_rate=0.,
+    def __init__(self, img_size=100, patch_size=4, input_channels=10, output_dim=512,
+                 embed_dim=768, depth=6, num_heads=8, mlp_ratio=4., qkv_bias=False,
+                 qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
                  norm_layer=nn.LayerNorm):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim
@@ -434,7 +404,7 @@ class CLIPSocialNavModel(pl.LightningModule):
     """
 
     def __init__(self,
-                 lidar_encoder: Union[VisionTransformer, ViT, LidarEncoder],
+                 lidar_encoder: Union[VisionTransformer, LidarEncoder],
                  joystick_encoder: JoyStickEncoder,
                  temperature=0.07,
                  lr=5e-4,
