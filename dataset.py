@@ -6,7 +6,8 @@ from typing import Optional, Tuple
 import numpy as np
 import pytorch_lightning as pl
 from termcolor import cprint
-from torch.utils.data import ConcatDataset, DataLoader, Dataset, WeightedRandomSampler
+import torch
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, WeightedRandomSampler, Subset
 from tqdm.auto import tqdm
 
 from utils import STACK_LEN, get_stack
@@ -177,6 +178,16 @@ class CLIPDataModule(pl.LightningDataModule):
         goal_y_weight = np.exp(abs(goal_y))
         return mu_weight + sig_weight + goal_x_weight + goal_y_weight
 
+    def _get_batch_similarity(self, joystick_batch):
+        m = torch.empty((joystick_batch.shape[0], joystick_batch.shape[0]))
+        for x in range(m.shape[0]):
+            x_1 = joystick_batch[x, :]
+            for y in range(m.shape[0]):
+                x_2 = joystick_batch[y, :]
+                m[x, y] = torch.linalg.norm(x_2 - x_1)
+        similarity = torch.sum(m).item() / m.shape[0] ** 2
+        return similarity
+
     def setup(self, stage: Optional[str] = None) -> None:
         """Setup training and validation splits
 
@@ -194,9 +205,9 @@ class CLIPDataModule(pl.LightningDataModule):
 
             # setup train/val split
             train_pkl = self.pickle_file_paths[: int(
-                0.6 * len(self.pickle_file_paths))]
+                0.8 * len(self.pickle_file_paths))]
             val_pkl = self.pickle_file_paths[int(
-                0.6 * len(self.pickle_file_paths)):]
+                0.2 * len(self.pickle_file_paths)):]
 
             # load training pkl files
             if self.verbose:
@@ -236,7 +247,7 @@ class CLIPDataModule(pl.LightningDataModule):
             # for small bag counts
             if len(self.training_set) < len(self.validation_set):
                 self.training_set, self.validation_set = (
-                    self.validation_set, self.training_set,)
+                    self.validation_set, self.training_set)
 
             # display information
             if self.verbose:
@@ -256,6 +267,7 @@ class CLIPDataModule(pl.LightningDataModule):
                                             num_samples=len(
                                                 self.sampler_weights),
                                             replacement=True)
+
             return DataLoader(self.training_set,
                               batch_size=self.batch_size,
                               sampler=sampler,
