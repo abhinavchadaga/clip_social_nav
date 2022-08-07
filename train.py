@@ -48,24 +48,23 @@ dm = CLIPDataModule(data_path='./data',
                     pin_memory=PIN_MEMORY,
                     verbose=True)
 
-vision_transformer = VisionTransformer(img_size=IMAGE_SIZE,
-                                       patch_size=PATCH_SIZE,
-                                       input_channels=INPUT_CHANNELS,
-                                       output_dim=OUTPUT_DIM,
-                                       embed_dim=EMBEDDING_SIZE,
-                                       depth=NUM_LAYERS,
-                                       num_heads=NHEAD,
-                                       attn_drop_rate=LE_DROPOUT,
-                                       drop_rate=LE_DROPOUT)
 # initialize model
-model = CLIPSocialNavModel(lidar_encoder=vision_transformer,
-                           joystick_encoder=JoyStickEncoder(
-                               joy_len=JOY_LEN, output_dim=OUTPUT_DIM),
-                           temperature=TEMPERATURE,
-                           lr=LEARNING_RATE,
-                           weight_decay=WEIGHT_DECAY,
-                           warmup=WARMUP,
-                           max_iters=MAX_ITERS)
+model = CLIPSocialNavModel(
+    lidar_encoder=VisionTransformer(img_size=IMAGE_SIZE,
+                                    patch_size=PATCH_SIZE,
+                                    input_channels=INPUT_CHANNELS,
+                                    output_dim=OUTPUT_DIM,
+                                    embed_dim=EMBEDDING_SIZE,
+                                    depth=NUM_LAYERS,
+                                    num_heads=NHEAD,
+                                    attn_drop_rate=LE_DROPOUT,
+                                    drop_rate=LE_DROPOUT),
+    joystick_encoder=JoyStickEncoder(joy_len=JOY_LEN, output_dim=OUTPUT_DIM),
+    temperature=TEMPERATURE,
+    lr=LEARNING_RATE,
+    weight_decay=WEIGHT_DECAY,
+    warmup=WARMUP,
+    max_iters=MAX_ITERS)
 
 early_stopping_cb = EarlyStopping(monitor='validation_loss',
                                   mode='min',

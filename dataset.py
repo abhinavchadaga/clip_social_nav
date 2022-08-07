@@ -15,13 +15,11 @@ from utils import STACK_LEN, get_stack
 class CLIPSet(Dataset):
     """data from one rosbag"""
 
-    def __init__(
-        self,
-        pickle_file_path: str,
-        ignore_first_n=30,
-        future_joy_len=300,
-        include_lidar_file_names=False,
-    ) -> None:
+    def __init__(self,
+                 pickle_file_path: str,
+                 ignore_first_n=30,
+                 future_joy_len=300,
+                 include_lidar_file_names=False, ) -> None:
         """Initialize a pytorch dataset using a single rosbag
 
         Args:
@@ -37,8 +35,7 @@ class CLIPSet(Dataset):
         # check if the pickle file is processed using file suffix
         if not os.path.exists(pickle_file_path.replace("_data.pkl", "_final.pkl")):
             raise Exception(
-                "Pickle file does not exist. Please process the pickle file first.."
-            )
+                "Pickle file does not exist. Please process the pickle file first..")
 
         with open(pickle_file_path.replace("_data.pkl", "_final.pkl"), "rb") as f:
             self.data = pickle.load(f)
@@ -82,8 +79,7 @@ class CLIPSet(Dataset):
 
         # get lidar stack
         lidar_stack = get_stack(
-            odom=self.data["odom"], lidar_img_dir=self.lidar_dir, i=index
-        )
+            odom=self.data["odom"], lidar_img_dir=self.lidar_dir, i=index)
 
         if not self.include_lidar_file_names:
             lidar_stack = lidar_stack[0]
@@ -113,18 +109,16 @@ class CLIPDataModule(pl.LightningDataModule):
     setup training, validation splits
     """
 
-    def __init__(
-        self,
-        data_path: str,
-        batch_size: int,
-        num_workers=0,
-        ignore_first_n=30,
-        joy_len=300,
-        include_lidar_file_names=False,
-        pin_memory=False,
-        use_weighted_sampling=False,
-        verbose=False,
-    ) -> None:
+    def __init__(self,
+                 data_path: str,
+                 batch_size: int,
+                 num_workers=0,
+                 ignore_first_n=30,
+                 joy_len=300,
+                 include_lidar_file_names=False,
+                 pin_memory=False,
+                 use_weighted_sampling=False,
+                 verbose=False, ) -> None:
         """Initialize a pytorch lightning data module from a directory of processed rosbags
 
         Args:
@@ -166,19 +160,21 @@ class CLIPDataModule(pl.LightningDataModule):
         # load the pickle files
         self.pickle_file_paths = glob.glob(
             os.path.join(self.data_dir, "*_final.pkl"))
-        self.pickle_file_paths = sorted(
-            self.pickle_file_paths, key=lambda x: os.stat(x).st_size, reverse=True
-        )
+        self.pickle_file_paths = sorted(self.pickle_file_paths,
+                                        key=lambda x: os.stat(x).st_size,
+                                        reverse=True)
 
-    def _generate_weight(self, joystick_sample: np.ndarray, goal_sample: np.ndarray,
-                         fwd_weight=1.0, ang_weight=1.0) -> float:
+    def _generate_weight(self,
+                         joystick_sample: np.ndarray,
+                         goal_sample: np.ndarray) -> float:
         joystick_sample = np.abs(joystick_sample)
         lin_x_mu, ang_z_mu = np.mean(joystick_sample, axis=0)
         lin_x_sig, ang_z_sig = np.std(joystick_sample, axis=0)
-        mu_weight = (2.0 - lin_x_mu) * fwd_weight + ang_z_mu * ang_weight
-        sig_weight = lin_x_sig + ang_z_sig
+        mu_weight = np.exp(2.0 - lin_x_mu) + np.exp(ang_z_mu)
+        sig_weight = np.exp(lin_x_sig + ang_z_sig)
         goal_x, goal_y = goal_sample
-        goal_x_weight, goal_y_weight = 12.0 - goal_x, abs(goal_y)
+        goal_x_weight = np.exp(12.0 - goal_x)
+        goal_y_weight = np.exp(abs(goal_y))
         return mu_weight + sig_weight + goal_x_weight + goal_y_weight
 
     def setup(self, stage: Optional[str] = None) -> None:
@@ -206,12 +202,10 @@ class CLIPDataModule(pl.LightningDataModule):
             if self.verbose:
                 cprint("creating training set...", "green")
             for pfp in tqdm(train_pkl, position=0, leave=True):
-                tmp_dataset = CLIPSet(
-                    pickle_file_path=pfp,
-                    ignore_first_n=self.ignore_first_n,
-                    future_joy_len=self.joy_len,
-                    include_lidar_file_names=self.include_lidar_file_names,
-                )
+                tmp_dataset = CLIPSet(pickle_file_path=pfp,
+                                      ignore_first_n=self.ignore_first_n,
+                                      future_joy_len=self.joy_len,
+                                      include_lidar_file_names=self.include_lidar_file_names, )
 
                 if self.use_weighted_sampling:
                     for i in range(len(tmp_dataset)):
@@ -227,26 +221,22 @@ class CLIPDataModule(pl.LightningDataModule):
             if self.verbose:
                 cprint("creating validation set...", "green")
             for pfp in tqdm(val_pkl, position=0, leave=True):
-                tmp_dataset = CLIPSet(
-                    pickle_file_path=pfp,
-                    ignore_first_n=self.ignore_first_n,
-                    future_joy_len=self.joy_len,
-                    include_lidar_file_names=self.include_lidar_file_names,
-                )
+                tmp_dataset = CLIPSet(pickle_file_path=pfp,
+                                      ignore_first_n=self.ignore_first_n,
+                                      future_joy_len=self.joy_len,
+                                      include_lidar_file_names=self.include_lidar_file_names)
                 self.validation_set.append(tmp_dataset)
 
             # concat dataset objects into full training and validation set
-            self.training_set, self.validation_set = ConcatDataset(
-                datasets=self.training_set
-            ), ConcatDataset(datasets=self.validation_set)
+            self.training_set, self.validation_set = ConcatDataset(datasets=self.training_set), \
+                ConcatDataset(
+                datasets=self.validation_set)
 
             # ensure that training set is larger than validation set
             # for small bag counts
             if len(self.training_set) < len(self.validation_set):
                 self.training_set, self.validation_set = (
-                    self.validation_set,
-                    self.training_set,
-                )
+                    self.validation_set, self.training_set,)
 
             # display information
             if self.verbose:
@@ -262,20 +252,23 @@ class CLIPDataModule(pl.LightningDataModule):
             DataLoader: training DataLoader
         """
         if self.use_weighted_sampling:
-            return DataLoader(self.training_set, batch_size=self.batch_size,
-                              sampler=WeightedRandomSampler(weights=self.sampler_weights,
-                                                            num_samples=len(self.batch_size * 2)),
-                              num_workers=self.num_workers, pin_memory=self.pin_memory,
+            sampler = WeightedRandomSampler(weights=self.sampler_weights,
+                                            num_samples=len(
+                                                self.sampler_weights),
+                                            replacement=True)
+            return DataLoader(self.training_set,
+                              batch_size=self.batch_size,
+                              sampler=sampler,
+                              num_workers=self.num_workers,
+                              pin_memory=self.pin_memory,
                               drop_last=True)
 
-        return DataLoader(
-            self.training_set,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            drop_last=True,
-        )
+        return DataLoader(self.training_set,
+                          batch_size=self.batch_size,
+                          shuffle=True,
+                          num_workers=self.num_workers,
+                          pin_memory=self.pin_memory,
+                          drop_last=True)
 
     def val_dataloader(self) -> DataLoader:
         """return validation dataloader, not shuffled
@@ -283,11 +276,9 @@ class CLIPDataModule(pl.LightningDataModule):
         Returns:
             DataLoader: validation DataLoader
         """
-        return DataLoader(
-            self.validation_set,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            drop_last=True,
-        )
+        return DataLoader(self.validation_set,
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers,
+                          pin_memory=self.pin_memory,
+                          drop_last=True)

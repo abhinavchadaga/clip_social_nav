@@ -1,16 +1,16 @@
-import os
 import math
-from typing import Tuple
+import os
 import warnings
+from typing import Tuple
 
-import torch
-from torch import Tensor
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
 from skimage.measure import block_reduce
+from torch import Tensor
 
 # 10hz * 2 seconds = 20 frames
 # used to get the previous two seconds
@@ -25,12 +25,11 @@ def affineinverse(M) -> np.ndarray:
 
 def get_affine_matrix_quat(x, y, quaternion) -> np.ndarray:
     theta = R.from_quat(quaternion).as_euler('XYZ')[2]
-    return np.array([[np.cos(theta), -np.sin(theta), x],
-                     [np.sin(theta), np.cos(theta), y], [0, 0, 1]])
+    return np.array([[np.cos(theta), -np.sin(theta), x], [np.sin(theta), np.cos(theta), y],
+                     [0, 0, 1]])
 
 
-def get_stack(odom: list, lidar_img_dir: str,
-              i: int) -> Tuple[np.ndarray, np.ndarray]:
+def get_stack(odom: list, lidar_img_dir: str, i: int) -> Tuple[np.ndarray, np.ndarray]:
     """ Get a stack of 5 lidar images given index time = t
 
     :param odom: list of odometry values from the robot
@@ -55,29 +54,25 @@ def get_stack(odom: list, lidar_img_dir: str,
 
     # rotate previous frames to current frame
     last_frame = odom_stack[-1]
-    t_odom_5 = get_affine_matrix_quat(last_frame[0], last_frame[1],
-                                      last_frame[2])
-    t_odom_4 = get_affine_matrix_quat(odom_stack[-2][0], odom_stack[-2][1],
-                                      odom_stack[-2][2])
+    t_odom_5 = get_affine_matrix_quat(last_frame[0], last_frame[1], last_frame[2])
+    t_odom_4 = get_affine_matrix_quat(odom_stack[-2][0], odom_stack[-2][1], odom_stack[-2][2])
     t_4_5 = affineinverse(t_odom_4) @ t_odom_5
-    t_odom_3 = get_affine_matrix_quat(odom_stack[-3][0], odom_stack[-3][1],
-                                      odom_stack[-3][2])
+    t_odom_3 = get_affine_matrix_quat(odom_stack[-3][0], odom_stack[-3][1], odom_stack[-3][2])
     t_3_5 = affineinverse(t_odom_3) @ t_odom_5
-    t_odom_2 = get_affine_matrix_quat(odom_stack[-4][0], odom_stack[-4][1],
-                                      odom_stack[-4][2])
+    t_odom_2 = get_affine_matrix_quat(odom_stack[-4][0], odom_stack[-4][1], odom_stack[-4][2])
     t_2_5 = affineinverse(t_odom_2) @ t_odom_5
-    t_odom_1 = get_affine_matrix_quat(odom_stack[-5][0], odom_stack[-5][1],
-                                      odom_stack[-5][2])
+    t_odom_1 = get_affine_matrix_quat(odom_stack[-5][0], odom_stack[-5][1], odom_stack[-5][2])
     t_1_5 = affineinverse(t_odom_1) @ t_odom_5
     # now do the rotations
     t_1_5[:, -1] *= -20
     t_2_5[:, -1] *= -20
     t_3_5[:, -1] *= -20
     t_4_5[:, -1] *= -20
-    lidar_stack[0] = cv2.warpAffine(lidar_stack[0], t_1_5[:2, :], (401, 401))
-    lidar_stack[1] = cv2.warpAffine(lidar_stack[1], t_2_5[:2, :], (401, 401))
-    lidar_stack[2] = cv2.warpAffine(lidar_stack[2], t_3_5[:2, :], (401, 401))
-    lidar_stack[3] = cv2.warpAffine(lidar_stack[3], t_4_5[:2, :], (401, 401))
+    lidar_stack[0] = cv2.warpAffine(lidar_stack[0], t_1_5[:2, :], (400, 400))
+    lidar_stack[1] = cv2.warpAffine(lidar_stack[1], t_2_5[:2, :], (400, 400))
+    lidar_stack[2] = cv2.warpAffine(lidar_stack[2], t_3_5[:2, :], (400, 400))
+    lidar_stack[3] = cv2.warpAffine(lidar_stack[3], t_4_5[:2, :], (400, 400))
+    lidar_stack = np.asarray(lidar_stack, dtype=np.float32)
 
     # mean and variance of height
     # 5, 400, 400 -> 10, 100, 100
@@ -100,34 +95,7 @@ def get_stack(odom: list, lidar_img_dir: str,
     return lidar_stack, img_file_names
 
 
-def transform_stack(lidar_img_stack: np.ndarray):
-    new_stack = []
-    for i in range(5):
-        img = lidar_img_stack[i, :, :]
-        height_mean_img = np.zeros((100, 100))
-        height_variance_img = np.zeros((100, 100))
-
-        for y in range(0, 400, 4):
-            for x in range(0, 400, 4):
-                height_mean = 0
-                height_variance = 0
-                for i in range(16):
-                    height_mean += img[y + i % 4, x + i // 4] / 16
-
-                for i in range(16):
-                    height_variance += np.power(
-                        img[y + i % 4, x + i // 4] - height_mean, 2) / 16
-
-                height_mean_img[y // 4, x // 4] = height_mean
-                height_variance_img[y // 4, x // 4] = height_variance
-
-        new_stack.extend([height_mean_img, height_variance_img])
-
-    return np.asarray(new_stack, dtype=np.float32)
-
-
-def visualize_lidar_stack(lidar_stack: np.ndarray,
-                          file_names: np.ndarray) -> None:
+def visualize_lidar_stack(lidar_stack: np.ndarray, file_names: np.ndarray) -> None:
     file_names = [f'{n}.png' for n in file_names]
     rows, cols = 1, 5
     plt.figure(figsize=(25, 25))
@@ -142,8 +110,7 @@ def visualize_goal(lidar_frame: np.ndarray, goal):
     # display the stuff
     lidar_frame = cv2.cvtColor(lidar_frame, cv2.COLOR_GRAY2BGR)
     t_f_pixels = [int(goal[0] / 0.05) + 200, int(-goal[1] / 0.05) + 200]
-    lidar_frame = cv2.circle(lidar_frame, (t_f_pixels[0], t_f_pixels[1]), 5,
-                             (255, 0, 0), -1)
+    lidar_frame = cv2.circle(lidar_frame, (t_f_pixels[0], t_f_pixels[1]), 5, (255, 0, 0), -1)
 
     return lidar_frame
 
@@ -161,10 +128,8 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
         return (1. + math.erf(x / math.sqrt(2.))) / 2.
 
     if (mean < a - 2 * std) or (mean > b + 2 * std):
-        warnings.warn(
-            "mean is more than 2 std from [a, b] in nn.init.trunc_normal_. "
-            "The distribution of values may be incorrect.",
-            stacklevel=2)
+        warnings.warn("mean is more than 2 std from [a, b] in nn.init.trunc_normal_. "
+                      "The distribution of values may be incorrect.", stacklevel=2)
 
     with torch.no_grad():
         # Values are generated by using a truncated uniform distribution and
