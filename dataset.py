@@ -69,10 +69,10 @@ class CLIPSet(Dataset):
         """get a sample from the dataset at this index
 
         Args:
-            index (int): sample from this index
+            index (int): index of the sample to load
 
         Returns:
-            Tuple[np.ndarray, np.ndarray, np.ndarray]: lidar_stack, joystick_data, relative_goal
+            Tuple[np.ndarray, np.ndarray, np.ndarray]: lidar_stack, joystick_data, 10m goal
         """
         # skip the ignore_first_n frames, and offset by STACK_LEN
         # so that no ignore_first_n frames are used in any lidar_stack
@@ -85,11 +85,23 @@ class CLIPSet(Dataset):
         if not self.include_lidar_file_names:
             lidar_stack = lidar_stack[0]
 
-        # # convert to mean_variance stack
-        # # (10, 100, 100)
-        # lidar_stack = transform_stack(lidar_stack)
+        # get joystick vector and ten_meter_goal
+        joystick_data, ten_meter_goal = self.get_goal_and_joystick(index)
 
-        # get joystick data
+        return lidar_stack, joystick_data, ten_meter_goal
+
+    def get_goal_and_joystick(self, index: int) -> Tuple[np.ndarray, np.ndarray]:
+        """ load the 10 meter goal and joystick messages to the goal
+
+            this function is used when generating sampling weights so that the
+            lidar stack is not loaded into memory unnecessarily
+
+        Args: 
+            index (int): index of the sample to load
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: joystick_data, 10m goal
+        """
         joystick_data = self.data["future_joystick"][index]
         # pad with zeros if the length of the joystick sample is not long enough
         diff = max(0, self.joy_pred_len - joystick_data.shape[0])
@@ -100,8 +112,7 @@ class CLIPSet(Dataset):
         # get 10m goal relative to the current position of the robot
         ten_meter_goal = self.data["local_goal_human_odom"][index][-1]
         ten_meter_goal = np.asarray(ten_meter_goal, dtype=np.float32)
-
-        return lidar_stack, joystick_data, ten_meter_goal
+        return joystick_data, ten_meter_goal
 
 
 class CLIPDataModule(pl.LightningDataModule):
@@ -167,15 +178,15 @@ class CLIPDataModule(pl.LightningDataModule):
 
     def _generate_weight(self,
                          joystick_sample: np.ndarray,
-                         goal_sample: np.ndarray) -> float:
+                         goal_sample: np.ndarray, angular_weight=2.0) -> float:
         joystick_sample = np.abs(joystick_sample)
         lin_x_mu, ang_z_mu = np.mean(joystick_sample, axis=0)
         lin_x_sig, ang_z_sig = np.std(joystick_sample, axis=0)
-        mu_weight = np.exp(2.0 - lin_x_mu) + np.exp(ang_z_mu)
+        mu_weight = np.exp(2.0 - lin_x_mu) + np.exp(ang_z_mu * angular_weight)
         sig_weight = np.exp(lin_x_sig + ang_z_sig)
         goal_x, goal_y = goal_sample
         goal_x_weight = np.exp(12.0 - goal_x)
-        goal_y_weight = np.exp(abs(goal_y))
+        goal_y_weight = np.exp(abs(goal_y) * angular_weight)
         return mu_weight + sig_weight + goal_x_weight + goal_y_weight
 
     def _get_batch_similarity(self, joystick_batch):
@@ -205,9 +216,9 @@ class CLIPDataModule(pl.LightningDataModule):
 
             # setup train/val split
             train_pkl = self.pickle_file_paths[: int(
-                0.8 * len(self.pickle_file_paths))]
+                0.6 * len(self.pickle_file_paths))]
             val_pkl = self.pickle_file_paths[int(
-                0.2 * len(self.pickle_file_paths)):]
+                0.6 * len(self.pickle_file_paths)):]
 
             # load training pkl files
             if self.verbose:
@@ -216,13 +227,14 @@ class CLIPDataModule(pl.LightningDataModule):
                 tmp_dataset = CLIPSet(pickle_file_path=pfp,
                                       ignore_first_n=self.ignore_first_n,
                                       future_joy_len=self.joy_len,
-                                      include_lidar_file_names=self.include_lidar_file_names, )
+                                      include_lidar_file_names=self.include_lidar_file_names)
 
+                # generate weights for each sample
+                # in the training set
                 if self.use_weighted_sampling:
                     for i in range(len(tmp_dataset)):
-                        sample = tmp_dataset[i]
-                        joystick = sample[1]
-                        goal = sample[2]
+                        joystick, goal = tmp_dataset.get_goal_and_joystick(
+                            index=i)
                         weight = self._generate_weight(joystick, goal)
                         self.sampler_weights.append(weight)
 
@@ -257,7 +269,7 @@ class CLIPDataModule(pl.LightningDataModule):
                     f"validation size: {len(self.validation_set)} samples", "cyan")
 
     def train_dataloader(self) -> DataLoader:
-        """return training dataloader, shuffled
+        """return training dataloader
 
         Returns:
             DataLoader: training DataLoader
@@ -283,14 +295,26 @@ class CLIPDataModule(pl.LightningDataModule):
                           drop_last=True)
 
     def val_dataloader(self) -> DataLoader:
-        """return validation dataloader, not shuffled
+        """return validation dataloader
 
         Returns:
             DataLoader: validation DataLoader
         """
+        if self.use_weighted_sampling:
+            sampler = WeightedRandomSampler(weights=self.sampler_weights,
+                                            num_samples=len(
+                                                self.sampler_weights),
+                                            replacement=True)
+            return DataLoader(self.validation_set,
+                              batch_size=self.batch_size,
+                              sampler=sampler,
+                              num_workers=self.num_workers,
+                              pin_memory=self.pin_memory,
+                              drop_last=True)
+
         return DataLoader(self.validation_set,
-                          batch_size=self.batch_size,
                           shuffle=False,
+                          batch_size=self.batch_size,
                           num_workers=self.num_workers,
                           pin_memory=self.pin_memory,
                           drop_last=True)

@@ -11,7 +11,8 @@ from my_vision_transformer import LidarEncoder
 from utils import trunc_normal_
 
 
-# From timm and Facebook-DINO
+# Vision Transformer from Facebook DINO with some modifications
+
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     if drop_prob == 0. or not training:
         return x
@@ -350,7 +351,7 @@ class JoyStickEncoder(nn.Module):
             dropout (float): probability of dropping a neuron in dropout layer. Defaults to 0.1
         """
         super().__init__()
-        joy_len *= 3
+        joy_len *= 2
         # two linear transformations
         self.fc1 = nn.Linear(joy_len, joy_len, bias=False)
         self.fc2 = nn.Linear(joy_len, output_dim, bias=False)
