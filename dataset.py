@@ -63,7 +63,7 @@ class CLIPSet(Dataset):
         Returns:
             int: number of samples in the dataset
         """
-        return len(self.lidar_img_paths) - self.ignore_first_n - STACK_LEN
+        return min(len(self.lidar_img_paths), len(self.data['odom'])) - self.ignore_first_n - STACK_LEN
 
     def __getitem__(self, index: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """get a sample from the dataset at this index
@@ -85,23 +85,8 @@ class CLIPSet(Dataset):
         if not self.include_lidar_file_names:
             lidar_stack = lidar_stack[0]
 
-        # get joystick vector and ten_meter_goal
-        joystick_data, ten_meter_goal = self.get_goal_and_joystick(index)
-
-        return lidar_stack, joystick_data, ten_meter_goal
-
-    def get_goal_and_joystick(self, index: int) -> Tuple[np.ndarray, np.ndarray]:
-        """ load the 10 meter goal and joystick messages to the goal
-
-            this function is used when generating sampling weights so that the
-            lidar stack is not loaded into memory unnecessarily
-
-        Args: 
-            index (int): index of the sample to load
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: joystick_data, 10m goal
-        """
+        # # get joystick vector and ten_meter_goal
+        # joystick_data, ten_meter_goal = self.get_goal_and_joystick(index)
         joystick_data = self.data["future_joystick"][index]
         # pad with zeros if the length of the joystick sample is not long enough
         diff = max(0, self.joy_pred_len - joystick_data.shape[0])
@@ -112,7 +97,7 @@ class CLIPSet(Dataset):
         # get 10m goal relative to the current position of the robot
         ten_meter_goal = self.data["local_goal_human_odom"][index][-1]
         ten_meter_goal = np.asarray(ten_meter_goal, dtype=np.float32)
-        return joystick_data, ten_meter_goal
+        return lidar_stack, joystick_data, ten_meter_goal
 
 
 class CLIPDataModule(pl.LightningDataModule):
@@ -163,7 +148,8 @@ class CLIPDataModule(pl.LightningDataModule):
         self.ignore_first_n = ignore_first_n
         self.pin_memory = pin_memory
         self.use_weighted_sampling = use_weighted_sampling
-        self.sampler_weights = []
+        self.train_sampler_weights = []
+        self.val_sampler_weights = []
 
         # diagnostics
         self.include_lidar_file_names = include_lidar_file_names
@@ -189,16 +175,6 @@ class CLIPDataModule(pl.LightningDataModule):
         goal_y_weight = np.exp(abs(goal_y) * angular_weight)
         return mu_weight + sig_weight + goal_x_weight + goal_y_weight
 
-    def _get_batch_similarity(self, joystick_batch):
-        m = torch.empty((joystick_batch.shape[0], joystick_batch.shape[0]))
-        for x in range(m.shape[0]):
-            x_1 = joystick_batch[x, :]
-            for y in range(m.shape[0]):
-                x_2 = joystick_batch[y, :]
-                m[x, y] = torch.linalg.norm(x_2 - x_1)
-        similarity = torch.sum(m).item() / m.shape[0] ** 2
-        return similarity
-
     def setup(self, stage: Optional[str] = None) -> None:
         """Setup training and validation splits
 
@@ -216,9 +192,9 @@ class CLIPDataModule(pl.LightningDataModule):
 
             # setup train/val split
             train_pkl = self.pickle_file_paths[: int(
-                0.6 * len(self.pickle_file_paths))]
+                0.7 * len(self.pickle_file_paths))]
             val_pkl = self.pickle_file_paths[int(
-                0.6 * len(self.pickle_file_paths)):]
+                0.7 * len(self.pickle_file_paths)):]
 
             # load training pkl files
             if self.verbose:
@@ -233,10 +209,11 @@ class CLIPDataModule(pl.LightningDataModule):
                 # in the training set
                 if self.use_weighted_sampling:
                     for i in range(len(tmp_dataset)):
-                        joystick, goal = tmp_dataset.get_goal_and_joystick(
-                            index=i)
+                        sample = tmp_dataset[i]
+                        joystick = sample[1]
+                        goal = sample[2]
                         weight = self._generate_weight(joystick, goal)
-                        self.sampler_weights.append(weight)
+                        self.train_sampler_weights.append(weight)
 
                 self.training_set.append(tmp_dataset)
 
@@ -248,6 +225,16 @@ class CLIPDataModule(pl.LightningDataModule):
                                       ignore_first_n=self.ignore_first_n,
                                       future_joy_len=self.joy_len,
                                       include_lidar_file_names=self.include_lidar_file_names)
+                # generate weights for each sample
+                # in the validation set
+                if self.use_weighted_sampling:
+                    for i in range(len(tmp_dataset)):
+                        sample = tmp_dataset[i]
+                        joystick = sample[1]
+                        goal = sample[2]
+                        weight = self._generate_weight(joystick, goal)
+                        self.val_sampler_weights.append(weight)
+
                 self.validation_set.append(tmp_dataset)
 
             # concat dataset objects into full training and validation set
@@ -275,10 +262,10 @@ class CLIPDataModule(pl.LightningDataModule):
             DataLoader: training DataLoader
         """
         if self.use_weighted_sampling:
-            sampler = WeightedRandomSampler(weights=self.sampler_weights,
+            sampler = WeightedRandomSampler(weights=self.train_sampler_weights,
                                             num_samples=len(
-                                                self.sampler_weights),
-                                            replacement=True)
+                                                self.train_sampler_weights),
+                                            replacement=False)
 
             return DataLoader(self.training_set,
                               batch_size=self.batch_size,
@@ -301,10 +288,10 @@ class CLIPDataModule(pl.LightningDataModule):
             DataLoader: validation DataLoader
         """
         if self.use_weighted_sampling:
-            sampler = WeightedRandomSampler(weights=self.sampler_weights,
+            sampler = WeightedRandomSampler(weights=self.val_sampler_weights,
                                             num_samples=len(
-                                                self.sampler_weights),
-                                            replacement=True)
+                                                self.val_sampler_weights),
+                                            replacement=False)
             return DataLoader(self.validation_set,
                               batch_size=self.batch_size,
                               sampler=sampler,

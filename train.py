@@ -31,7 +31,7 @@ TEMPERATURE = 0.07
 # hyperparameters
 BATCH_SIZE = 128
 MAX_EPOCHS = 23
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 5e-4
 WEIGHT_DECAY = 0.2
 PIN_MEMORY = True
 WARMUP = 2000
@@ -43,7 +43,7 @@ dm = CLIPDataModule(data_path='./data',
                     joy_len=JOY_LEN,
                     num_workers=8,
                     pin_memory=PIN_MEMORY,
-                    use_weighted_sampling=True,
+                    use_weighted_sampling=False,
                     verbose=True)
 
 # initialize model
@@ -82,7 +82,7 @@ model_checkpoint_cb = ModelCheckpoint(
 trainer = pl.Trainer(
     accelerator='gpu',
     logger=pl_loggers.TensorBoardLogger("lightning_logs/clip_social_nav/"),
-    callbacks=[model_checkpoint_cb, swa_cb],
+    callbacks=[model_checkpoint_cb, swa_cb, early_stopping_cb],
     gradient_clip_val=1.0,
     precision=16,
     limit_train_batches=0.80,
