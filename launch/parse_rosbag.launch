@@ -1,0 +1,13 @@
+<launch>
+
+    <arg name="rosbag_path" default=None>
+    <arg name="save_data_path" default="/home/abhinavchadaga/CS/new_clip_social_nav/data" />
+    <arg name='robot_name' default="spot" />
+
+    <!--rosbag parser node-->
+    <param name="rosbag_path" type="str" value="$(arg rosbag_path)" />
+    <param name="save_data_path" type="str" value="$(arg save_data_path)" />
+    <param name="robot_config" type="str" value="$(arg robot_config)" />
+    <node name="process_bag" pkg="my_launch" type="process_bag.py" output="screen" required="true"/>
+
+</launch>
