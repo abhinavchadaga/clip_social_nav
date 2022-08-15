@@ -6,3 +6,4 @@ logs
 data/
 *__pycache__/*
 .vscode/
+src/rosbag_parser/scripts/__pycache__/
