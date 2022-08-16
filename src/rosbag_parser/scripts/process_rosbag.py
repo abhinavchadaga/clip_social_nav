@@ -2,7 +2,6 @@
 import os
 import math
 import pathlib
-from re import S
 import subprocess
 import pickle
 
@@ -17,11 +16,9 @@ from termcolor import cprint
 from tqdm.auto import tqdm
 
 # data to save from rosbag
-data = {
-    'lidar_msgs_sync': [],
-    'odom_msgs_sync': [],
-    'joystick_msgs_sync': []
-}
+data = {'lidar_msgs_sync': [], 'odom_msgs_sync': [], 'joystick_msgs_sync': []}
+
+### JOYSTICK DATA UTILS ###
 
 
 def joystickValue(x, scale, kDeadZone=0.02) -> float:
@@ -32,28 +29,35 @@ def joystickValue(x, scale, kDeadZone=0.02) -> float:
 
 def convert_joystick_msg(joystick_msg, robot_config) -> list:
     joy_axes = joystick_msg.axes
-    linear_x = joystickValue(
-        joy_axes[robot_config['kXAxis']], -robot_config['kMaxLinearSpeed'])
-    linear_y = joystickValue(
-        joy_axes[robot_config['kYAxis']], -robot_config['kMaxLinearSpeed'])
-    angular_z = joystickValue(
-        joy_axes[robot_config['kRAxis']], -np.deg2rad(90.0), kDeadZone=0.0)
+    linear_x = joystickValue(joy_axes[robot_config['kXAxis']],
+                             -robot_config['kMaxLinearSpeed'])
+    linear_y = joystickValue(joy_axes[robot_config['kYAxis']],
+                             -robot_config['kMaxLinearSpeed'])
+    angular_z = joystickValue(joy_axes[robot_config['kRAxis']],
+                              -np.deg2rad(90.0),
+                              kDeadZone=0.0)
 
     return [linear_x, linear_y, angular_z]
+
+
+### ODOM DATA UTILS ###
+
+
+def convert_odom_msg(odom_msg):
+    x = odom_msg.pose.pose.position.x
+    y = odom_msg.pose.pose.position.y
+    orientation = odom_msg.pose.pose.orientation
+    quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
+    return [x, y, quaternion]
 
 
 def callback(lidar, odom, joystick):
     # append synced lidar points
     data['lidar_msgs_sync'].append(lidar)
 
-    # get xyz, quaternion from odom msg
-    x = odom.pose.pose.position.x
-    y = odom.pose.pose.position.y
-    orientation = odom.pose.pose.orientation
-    quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
-
+    odom = convert_odom_msg(odom)
     # save odom msg
-    data['odom_msgs_sync'].append([x, y, quaternion])
+    data['odom_msgs_sync'].append(odom)
 
     # save joystick msg
     data['joystick_msgs_sync'].append(joystick)
@@ -98,12 +102,8 @@ def main():
     odom_msgs, odom_ts = [], []
     cprint('Reading all odom messages...', 'green', attrs=['bold'])
     for _, msg, t in tqdm(bag.read_messages(topics=['/odom'])):
-        x = msg.pose.pose.position.x
-        y = msg.pose.pose.position.y
-        orientation = msg.pose.pose.orientation
-        quaternion = [orientation.x, orientation.y,
-                      orientation.z, orientation.w]
-        odom_msgs.append([x, y, quaternion])
+        msg = convert_odom_msg(msg)
+        odom_msgs.append(msg)
         if len(odom_ts) == 0:
             odom_ts.append(0.0)
         else:
@@ -160,8 +160,9 @@ def main():
         if rosbag_play_process.poll() is not None:
             cprint('rosbag process has stopped', 'green', attrs=['bold'])
             pickle.dump(data, open(path_to_pkl, 'wb'))
-            cprint(
-                f'Data was saved to :: {path_to_pkl}', 'green', attrs=['bold'])
+            cprint(f'Data was saved to :: {path_to_pkl}',
+                   'green',
+                   attrs=['bold'])
             exit(0)
 
     rospy.spin()

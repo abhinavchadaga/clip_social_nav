@@ -4,6 +4,7 @@ devel
 logs
 *rosbags*
 data/
-*__pycache__/*
+__pycache__/
 .vscode/
 src/rosbag_parser/scripts/__pycache__/
+model_reference/
