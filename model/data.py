@@ -44,7 +44,7 @@ class CLIPSet(Dataset):
 
         Args:
             index (int): index of sample to return
-        
+
         Returns:
             Tuple[np.ndarray, np.ndarray, np.ndarray]: lidar, goal, joystick
                 lidar.shape: (batch_size, num_channels, img_size, img_size)
@@ -77,17 +77,17 @@ class CLIPSet(Dataset):
         return weights
 
 
-def create_trainloader(data_dirs,
-                       batch_size,
-                       num_workers,
-                       pin_memory,
-                       use_weighted_sampling,
-                       joy_len=300):
+def create_dataloader(data_dirs,
+                      batch_size,
+                      num_workers,
+                      pin_memory,
+                      use_weighted_sampling,
+                      train,
+                      joy_len=300):
     tmp_sets = []
     weights = []
-    for dir in listdir(data_dirs):
-        dir = join(data_dirs, dir)
-        tmp = CLIPSet(dir, joy_len)
+    for d in data_dirs:
+        tmp = CLIPSet(d, joy_len)
         tmp_sets.append(tmp)
         if use_weighted_sampling:
             tmp_weights = tmp.load_weights()
@@ -96,33 +96,42 @@ def create_trainloader(data_dirs,
     # concatenate all datasets into one set
     dataset = ConcatDataset(tmp_sets)
 
+    # if not using weighted sampling
+    # set shuffle to true for training dataloader
+    # and false to validation dataloader
+    shuffle = True if train else False
     if use_weighted_sampling:
         sampler = WeightedRandomSampler(weights=weights,
                                         num_samples=len(weights),
                                         replacement=False)
-        return DataLoader(dataset=dataset,
-                          batch_size=batch_size,
-                          num_workers=num_workers,
-                          pin_memory=pin_memory,
-                          drop_last=True,
-                          sampler=sampler)
+        dataloader = DataLoader(dataset=dataset,
+                                batch_size=batch_size,
+                                num_workers=num_workers,
+                                pin_memory=pin_memory,
+                                drop_last=True,
+                                sampler=sampler)
+        return dataloader, len(dataset)
     else:
-        return DataLoader(dataset=dataset,
-                          batch_size=batch_size,
-                          num_workers=num_workers,
-                          pin_memory=pin_memory,
-                          drop_last=True,
-                          shuffle=True)
+        dataloader = DataLoader(dataset=dataset,
+                                batch_size=batch_size,
+                                num_workers=num_workers,
+                                pin_memory=pin_memory,
+                                drop_last=True,
+                                shuffle=shuffle)
+
+        return dataloader, len(dataset)
 
 
 if __name__ == "__main__":
-    trainloader = create_trainloader(
+    trainloader = create_dataloader(
         data_dirs='/home/abhinavchadaga/CS/clip_social_nav/data',
         batch_size=128,
         num_workers=8,
         pin_memory=True,
         use_weighted_sampling=True,
         joy_len=300)
+
+    print(len(trainloader))
 
     for i, (lidar, goal, joystick) in enumerate(trainloader):
         if i == 0:

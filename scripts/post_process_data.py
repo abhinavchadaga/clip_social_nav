@@ -41,6 +41,15 @@ def lidar_msg_to_img(lidar_msg, bev_lidar_handler) -> np.ndarray:
     return lidar_img
 
 
+def crop_image(img: np.ndarray) -> np.ndarray:
+    """ Crop lidar image from 241 x 241 to 240 x 240
+
+    Args:
+        img (np.ndarray): lidar image to crop
+    """
+    return img[:240, :240]
+
+
 def get_goal_odom(odom_sync_msg, odom_msgs, odom_ts, current_time):
     closest_index = np.searchsorted(odom_ts, current_time) + 1
     goal_index = min(closest_index + 30, len(odom_msgs) - 1)
@@ -112,6 +121,7 @@ def process_pkl(path_to_pkl, robot_config):
 
             # process lidar data
             lidar_img = lidar_msg_to_img(lidar_msg, bev_lidar_handler)
+            lidar_img = crop_image(lidar_img)
 
             # save lidar img
             lidar_file_path = os.path.join(lidar_dir, f'{i}.png')

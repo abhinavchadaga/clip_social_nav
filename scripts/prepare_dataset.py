@@ -56,10 +56,10 @@ def create_lidar_stack(lidar_dir, odom_dir, index):
     t_2_5[:, -1] *= -20
     t_3_5[:, -1] *= -20
     t_4_5[:, -1] *= -20
-    lidar_stack[0] = cv2.warpAffine(lidar_stack[0], t_1_5[:2, :], (241, 241))
-    lidar_stack[1] = cv2.warpAffine(lidar_stack[1], t_2_5[:2, :], (241, 241))
-    lidar_stack[3] = cv2.warpAffine(lidar_stack[3], t_4_5[:2, :], (241, 241))
-    lidar_stack[2] = cv2.warpAffine(lidar_stack[2], t_3_5[:2, :], (241, 241))
+    lidar_stack[0] = cv2.warpAffine(lidar_stack[0], t_1_5[:2, :], (240, 240))
+    lidar_stack[1] = cv2.warpAffine(lidar_stack[1], t_2_5[:2, :], (240, 240))
+    lidar_stack[3] = cv2.warpAffine(lidar_stack[3], t_4_5[:2, :], (240, 240))
+    lidar_stack[2] = cv2.warpAffine(lidar_stack[2], t_3_5[:2, :], (240, 240))
     lidar_stack = np.asarray(lidar_stack, dtype=np.float32)
     return lidar_stack
 
