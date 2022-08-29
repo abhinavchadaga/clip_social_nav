@@ -4,10 +4,10 @@ data_path = 'data'
 
 # dataloader config
 batch_size = 64
-num_workers = 10
+num_workers = 8
 pin_memory = True
-use_weighted_sampling = False
-joy_len = 300
+use_weighted_sampling = True
+joy_len = 250
 
 # lidar encoder config
 img_size = 240
@@ -30,7 +30,7 @@ patience = 2
 factor = 0.5
 
 # training parameters
-epochs = 32
+epochs = 1
 sim_threshold = 0.0
 
 # gpu vs cpu

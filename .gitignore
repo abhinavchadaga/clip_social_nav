@@ -1,3 +1,7 @@
+.idea
+data.tar.xz
+lightning_logs/
+trained_models/
 .catkin_tools
 build
 devel

@@ -14,11 +14,11 @@ def generate_weight(goal, joystick) -> float:
     joystick = np.abs(joystick)
     lin_x_mu, _, ang_z_mu = np.mean(joystick, axis=0)
     lin_x_sig, _, ang_z_sig = np.std(joystick, axis=0)
-    mu_weight = (2.0 - lin_x_mu) + (ang_z_mu)
-    sig_weight = lin_x_sig + ang_z_sig
+    mu_weight = np.exp(2.0 - lin_x_mu) + np.exp(ang_z_mu)
+    sig_weight = np.exp(lin_x_sig + ang_z_sig)
     goal_x, goal_y = goal
-    goal_x_weight = 12.0 - goal_x
-    goal_y_weight = abs(goal_y)
+    goal_x_weight = np.exp(8.0 - goal_x)
+    goal_y_weight = np.exp(abs(goal_y))
     return mu_weight + sig_weight + goal_x_weight + goal_y_weight
 
 
@@ -29,7 +29,11 @@ def generate_weights(dir):
 
     # create save path for weights
     weights_dir = join(dir, 'weights')
-    pathlib.Path(weights_dir).mkdir(parents=True, exist_ok=True)
+    # clear out existing weights
+    if os.path.exists(weights_dir):
+        os.system(f"rm -rf {weights_dir}")
+
+    pathlib.Path(weights_dir).mkdir(parents=True)
 
     length = len(os.listdir(joystick_dir))
     weights = []
