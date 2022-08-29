@@ -31,7 +31,7 @@ factor = 0.5
 
 # training parameters
 epochs = 1
-sim_threshold = 0.0
+sim_threshold = 8.0
 
 # gpu vs cpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
