@@ -10,7 +10,7 @@ from numerize.numerize import numerize
 from tqdm.auto import tqdm
 
 import config as CFG
-from data import create_dataloader
+from data import CLIPDataModule
 from encoders import VisionTransformer, JoyStickEncoder
 from model import CLIPSocialNavModel, CLIPLoss
 
@@ -36,56 +36,20 @@ def get_batch_similarity(joystick_batch: torch.Tensor) -> float:
     return similarity
 
 
-# load data directories
-data_dirs = glob.glob(os.path.join(CFG.data_path, '*'))
-data_dirs = [d for d in data_dirs if os.path.isdir(d)]
-data_dirs = sorted(data_dirs, key=data_dir_len, reverse=True)
-
-cprint('loading data from: ', 'white', attrs=['bold'])
-for d in data_dirs:
-    print(d)
-print()
-
-# split data directories into
-# train and validation split
-train_dirs = data_dirs[:int(0.5 * len(data_dirs))]
-val_dirs = data_dirs[int(0.5 * len(data_dirs)):]
-
-cprint('training datasets: ', 'white', attrs=['bold'])
-for d in train_dirs:
-    print(d)
-print()
-
-cprint('validation datasets: ', 'white', attrs=['bold'])
-for d in val_dirs:
-    print(d)
-print()
-
-# create training dataloader
-train_loader, trainset_len = create_dataloader(
-    data_dirs=train_dirs,
-    batch_size=CFG.batch_size,
-    num_workers=CFG.num_workers,
-    pin_memory=CFG.pin_memory,
-    use_weighted_sampling=CFG.use_weighted_sampling,
-    train=True,
-    joy_len=CFG.joy_len)
-
-# create validation dataloader
-val_loader, valset_len = create_dataloader(
-    data_dirs=val_dirs,
-    batch_size=CFG.batch_size,
-    num_workers=CFG.num_workers,
-    pin_memory=CFG.pin_memory,
-    use_weighted_sampling=CFG.use_weighted_sampling,
-    train=False,
-    joy_len=CFG.joy_len)
+# create Data Module
+dm = CLIPDataModule(data_path=CFG.data_path,
+                    batch_size=CFG.batch_size,
+                    num_workers=CFG.num_workers,
+                    joy_len=CFG.joy_len,
+                    pin_memory=CFG.pin_memory,
+                    use_weighted_sampling=CFG.use_weighted_sampling,
+                    verbose=True)
 
 # split size information
-cprint(f'training set size:\t {trainset_len}', 'white', attrs=['bold'])
-cprint(f'validation set size:\t {valset_len}\n', 'white', attrs=['bold'])
+cprint(f'training set size:\t {len(dm.train_set)}', 'white', attrs=['bold'])
+cprint(f'validation set size:\t {len(dm.val_set)}\n', 'white', attrs=['bold'])
 
-# initialize encoders and model
+# encoders and model
 lidar_encoder = VisionTransformer(img_size=CFG.img_size,
                                   patch_size=CFG.patch_size,
                                   input_channels=CFG.input_channels,
@@ -98,8 +62,10 @@ lidar_encoder = VisionTransformer(img_size=CFG.img_size,
 
 joystick_encoder = JoyStickEncoder(joy_len=CFG.joy_len,
                                    output_dim=CFG.output_dim)
+
 model = CLIPSocialNavModel(lidar_encoder=lidar_encoder,
-                           joystick_encoder=joystick_encoder)
+                           joystick_encoder=joystick_encoder,
+                           temperature=CFG.temperature)
 
 # loss function and optimizer
 loss_fn = CLIPLoss(temperature=CFG.temperature)
@@ -131,7 +97,9 @@ cprint(f'learning rate:\t {CFG.learning_rate}', 'white', attrs=['bold'])
 
 
 def train_one_epoch(epoch_index, tb_writer):
-    with tqdm(train_loader, total=len(train_loader), unit='batch') as tepoch:
+    with tqdm(dm.train_dataloader(),
+              total=len(dm.train_dataloader()),
+              unit='batch') as tepoch:
         for lidar, goal, joystick in tepoch:
             tepoch.set_description(f'epoch {epoch_index + 1}')
             # move tensors to gpu
@@ -155,7 +123,7 @@ def train_one_epoch(epoch_index, tb_writer):
             # change weights
             optimizer.step()
             # scheduler step
-            tepoch.set_postfix(loss=loss.item())
+            tepoch.set_postfix(training_step_loss=loss.item())
 
 
 def validate_one_epoch(epoch_index):

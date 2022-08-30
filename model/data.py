@@ -8,6 +8,8 @@ import pytorch_lightning as pl
 import numpy as np
 from termcolor import cprint
 
+import config as CFG
+
 
 class CLIPSet(Dataset):
     """ Dataset object representing the data from a single rosbag
@@ -211,7 +213,7 @@ class CLIPDataModule(pl.LightningDataModule):
 
 if __name__ == "__main__":
     # test the dataloader
-    dm = CLIPDataModule(data_path='data',
+    dm = CLIPDataModule(data_path=CFG.data_path,
                         batch_size=64,
                         num_workers=8,
                         joy_len=200,

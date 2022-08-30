@@ -141,21 +141,21 @@ class CLIPSocialNavModel(pl.LightningModule):
                  logger=False,
                  on_step=True,
                  on_epoch=False)
-        if self.train_batch_sim <= CFG.sim_threshold:
-            return None
-        else:
-            loss = self.clip_loss(lidar_features, joystick_features)
-            self.log("training_loss",
-                     loss,
-                     on_epoch=True,
-                     on_step=True,
-                     prog_bar=True,
-                     logger=True)
-            return loss
+        # if self.train_batch_sim <= CFG.sim_threshold:
+        #     return torch.zeros((1, 1), requires_grad=True)
+        # else:
+        loss = self.clip_loss(lidar_features, joystick_features)
+        self.log("training_loss",
+                 loss,
+                 on_epoch=True,
+                 on_step=True,
+                 prog_bar=True,
+                 logger=True)
+        return loss
 
     def on_train_batch_end(self, outputs, batch, batch_idx):
         # clear out batch_similarity
-        self.train_batch_sim = None
+        self.train_batch_sim = 0.0
 
     def on_validation_batch_start(self, batch, batch_idx,
                                   dataloader_idx) -> None:
@@ -172,21 +172,21 @@ class CLIPSocialNavModel(pl.LightningModule):
         """ Merge feature vectors across GPUs and calculate validation loss
         """
         if step_output is None:
-            return None
+            return torch.zeros((1, 1), requires_grad=True)
         lidar_features = step_output['lidar']
         joystick_features = step_output['joystick']
-        if self.val_batch_sim <= CFG.sim_threshold:
-            loss = 0
-        else:
-            loss = self.clip_loss(lidar_features, joystick_features)
-            self.log("validation_loss",
-                     loss,
-                     on_epoch=True,
-                     prog_bar=True,
-                     logger=True)
+        # if self.val_batch_sim <= CFG.sim_threshold:
+        #     return torch.zeros((1, 1), requires_grad=True)
+        # else:
+        loss = self.clip_loss(lidar_features, joystick_features)
+        self.log("validation_loss",
+                 loss,
+                 on_epoch=True,
+                 prog_bar=True,
+                 logger=True)
         return loss
 
     def on_validation_batch_end(self, outputs, batch, batch_idx,
                                 dataloader_idx):
         # clear out batch_similarity
-        self.val_batch_sim = None
+        self.val_batch_sim = 0.0

@@ -1,10 +1,10 @@
 import torch
 
-data_path = 'data'
+data_path = '/scratch/abhinavc/clip_social_nav/data'
 
 # dataloader config
-batch_size = 64
-num_workers = 8
+batch_size = 32
+num_workers = 10
 pin_memory = True
 use_weighted_sampling = True
 joy_len = 250
@@ -13,8 +13,8 @@ joy_len = 250
 img_size = 240
 patch_size = 8
 input_channels = 5
-embed_dim = 256
-depth = 4
+embed_dim = 900
+depth = 6
 num_heads = 8
 drop_rate = 0.1
 attn_drop_rate = 0.1
@@ -30,7 +30,7 @@ patience = 2
 factor = 0.5
 
 # training parameters
-epochs = 1
+epochs = 50
 sim_threshold = 8.0
 
 # gpu vs cpu

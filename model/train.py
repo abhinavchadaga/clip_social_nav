@@ -46,32 +46,25 @@ swa_cb = StochasticWeightAveraging(swa_lrs=1e-2)
 model_checkpoint_cb = ModelCheckpoint(
     dirpath='trained_models/',
     filename=datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
-    monitor='training_loss',
+    monitor='validation_loss',
     mode='min')
-
-trainer = Trainer(
-    accelerator='gpu',
-    logger=pl_loggers.TensorBoardLogger("lightning_logs/clip_social_nav/"),
-    callbacks=[model_checkpoint_cb, swa_cb],
-    gradient_clip_val=1.0,
-    max_epochs=CFG.epochs,
-    log_every_n_steps=20)
 
 num_gpus = torch.cuda.device_count()
 if num_gpus > 1:
     trainer = Trainer(
         accelerator='gpu',
-        devices=8,
+        gpus=8,
         strategy='dp',
         logger=pl_loggers.TensorBoardLogger("lightning_logs/clip_social_nav/"),
         callbacks=[model_checkpoint_cb, swa_cb],
         gradient_clip_val=1.0,
         max_epochs=CFG.epochs,
         log_every_n_steps=20)
+
 else:
     trainer = Trainer(
         accelerator='gpu',
-        devices=1,
+        gpus=1,
         logger=pl_loggers.TensorBoardLogger("lightning_logs/clip_social_nav/"),
         callbacks=[model_checkpoint_cb, swa_cb],
         gradient_clip_val=1.0,
