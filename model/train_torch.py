@@ -44,10 +44,7 @@ dm = CLIPDataModule(data_path=CFG.data_path,
                     pin_memory=CFG.pin_memory,
                     use_weighted_sampling=CFG.use_weighted_sampling,
                     verbose=True)
-
-# split size information
-cprint(f'training set size:\t {len(dm.train_set)}', 'white', attrs=['bold'])
-cprint(f'validation set size:\t {len(dm.val_set)}\n', 'white', attrs=['bold'])
+dm.setup()
 
 # encoders and model
 lidar_encoder = VisionTransformer(img_size=CFG.img_size,
@@ -123,7 +120,8 @@ def train_one_epoch(epoch_index, tb_writer):
             # change weights
             optimizer.step()
             # scheduler step
-            tepoch.set_postfix(training_step_loss=loss.item())
+            tepoch.set_postfix(batch_similarity=joy_sim,
+                               training_step_loss=loss.item())
 
 
 def validate_one_epoch(epoch_index):

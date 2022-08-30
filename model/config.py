@@ -1,10 +1,10 @@
 import torch
 
-data_path = '/scratch/abhinavc/clip_social_nav/data'
+data_path = 'data'
 
 # dataloader config
 batch_size = 32
-num_workers = 10
+num_workers = 8
 pin_memory = True
 use_weighted_sampling = True
 joy_len = 250
@@ -13,7 +13,7 @@ joy_len = 250
 img_size = 240
 patch_size = 8
 input_channels = 5
-embed_dim = 900
+embed_dim = 256
 depth = 6
 num_heads = 8
 drop_rate = 0.1
@@ -31,7 +31,7 @@ factor = 0.5
 
 # training parameters
 epochs = 50
-sim_threshold = 8.0
+sim_threshold = 10.0
 
 # gpu vs cpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
